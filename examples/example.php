@@ -25,7 +25,7 @@ $terfblocker
 	// from an advanced search
 	// @see https://developer.twitter.com/en/docs/twitter-api/v1/tweets/search/guides/standard-operators
 	->fromSearch('#IStandWithJKRowling', true)
-	// from the followers of the given account - API limits wil be automatically enforced if the follower count is > 50k
+	// from the followers of the given account - API limits will be automatically enforced if the follower count is > 50k
 	->fromFollowers('https://twitter.com/HJoyceGender')
 	// fetches the retweeters of the given tweet - note that the results of this endpoint
 	// may not return *all* but only the *recent* retweeters - whatever that means...
@@ -33,5 +33,6 @@ $terfblocker
 	// saves the internal "positive"/"negative" lists in the given directory
 	->save(__DIR__.'/../json/')
 	// blocks all accounts from the internal "positive" list - or, if a json file is given, from that list
+	->block()
 	->block(__DIR__.'/terfs.json')
 ;

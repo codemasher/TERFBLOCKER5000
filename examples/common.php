@@ -21,6 +21,10 @@ require_once __DIR__.'/../vendor/autoload.php';
 
 const CFGDIR = __DIR__.'/../config';
 
+// please for the love of the php goddess, disable error reporting on a public server
+#error_reporting(0);
+#ini_set('display_errors', '0');
+
 ini_set('date.timezone', 'Europe/Amsterdam');
 
 $env = (new DotEnv(CFGDIR, '.env', false))->load();
@@ -57,11 +61,12 @@ $http = new class($options, null, $logger) extends CurlClient{
 			$response = parent::sendRequest($request);
 		}
 		catch(Throwable $e){
-			$this->logger->debug("\n----HTTP-ERROR------\n".message_to_string($request));
+			$this->logger->debug("\n----HTTP-ERROR------");
 			$this->logger->error($e->getMessage());
 			$this->logger->error($e->getTraceAsString());
 
-			throw $e;
+#			throw $e;
+			exit; // don't throw, just exit
 		}
 
 		$this->logger->debug("\n----HTTP-RESPONSE---\n".message_to_string($response));

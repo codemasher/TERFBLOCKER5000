@@ -76,7 +76,7 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 		[$screen_name, $id] = $this::parseTwitterURL($statusURL);
 
 		if(empty($screen_name)){
-			throw new InvalidArgumentException;
+			throw new InvalidArgumentException('no screen_name given');
 		}
 
 		$params = [
@@ -123,13 +123,17 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 		[$screen_name,] = $this::parseTwitterURL($profileURL);
 
 		if(empty($screen_name)){
-			throw new InvalidArgumentException;
+			throw new InvalidArgumentException('no screen_name given');
 		}
 
 		$userResponse = $this->twitter->usersShow(['screen_name' => $screen_name, 'include_entities' => 'false']);
 
 		if($userResponse->getStatusCode() !== 200){
-			throw new RuntimeException;
+			throw new RuntimeException(sprintf(
+				'Twitter::usersShow() response error: HTTP/%s %s',
+				$userResponse->getStatusCode(),
+				$userResponse->getReasonPhrase()
+			));
 		}
 
 		$user        = get_json($userResponse);
@@ -151,7 +155,7 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 		[, $id] = $this::parseTwitterURL($statusURL);
 
 		if(empty($id)){
-			throw new InvalidArgumentException;
+			throw new InvalidArgumentException('no snowflake id given');
 		}
 
 		$statusResponse = $this->twitter->statusesShowId($id);
@@ -203,7 +207,7 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 		$path = realpath(rtrim($path, '\\/')).DIRECTORY_SEPARATOR;
 
 		if(!file_exists($path) || !is_dir($path) || !is_writable($path)){
-			throw new InvalidArgumentException;
+			throw new InvalidArgumentException('invalid path given');
 		}
 
 		$date = date('Y.m.d-H.i.s');
@@ -326,7 +330,7 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 	protected function match(string $name, string $bio):bool{
 
 		if(empty($this->any) && empty($this->all)){
-			throw new InvalidArgumentException;
+			throw new InvalidArgumentException('no terms to match given');
 		}
 
 		$s = ['"', '\'', '-', '/', '\\'];
@@ -368,7 +372,7 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 	protected function getIDs(string $endpointMethod, array $params, bool $enforceLimit = null):array{
 
 		if(!in_array($endpointMethod, ['blocksIds', 'followersIds', 'statusesRetweetersIds'])){
-			throw new InvalidArgumentException;
+			throw new InvalidArgumentException('invalid endpoint');
 		}
 
 		$params = array_merge(['cursor' => -1, 'stringify_ids' => 'true'], $params);
@@ -439,7 +443,7 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 	protected function performBlock(array $blocklist):void{
 
 		if(empty($blocklist)){
-			throw new InvalidArgumentException;
+			throw new InvalidArgumentException('blocklist is empty');
 		}
 
 		$blocklist = array_values($blocklist);

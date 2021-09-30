@@ -1,0 +1,29 @@
+{
+	"name": "codemasher/terfblocker5000",
+	"description": "Twitter TERF blocker. PHP 7.4+",
+	"keywords": ["Twitter", "oauth", "Fuck TERFs"],
+	"license": "MIT",
+	"minimum-stability": "stable",
+	"prefer-stable": true,
+	"require": {
+		"php": "^7.4 || ^8.0",
+		"ext-json": "*",
+		"ext-mbstring": "*",
+	    "psr/log": "^1.1 || ^2.0 || ^3.0",
+		"chillerlan/php-oauth-providers": "^2.0"
+	},
+	"require-dev": {
+		"chillerlan/php-dotenv": "^2.1",
+		"phpunit/phpunit": "^9.5"
+	},
+	"autoload": {
+		"psr-4": {
+			"codemasher\\TERFBLOCKER5000\\": "src"
+		}
+	},
+	"autoload-dev": {
+		"psr-4": {
+			"codemasher\\TERFBLOCKER5000Tests\\": "tests"
+		}
+	}
+}

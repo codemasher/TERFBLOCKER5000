@@ -21,7 +21,7 @@ use function chillerlan\HTTP\Utils\get_json;
 use function array_chunk, array_merge, array_unique, array_values, count, date, file_exists,
 	file_get_contents, file_put_contents, implode, in_array, is_array, is_dir, is_file,
 	is_numeric, is_readable, is_string, is_writable, json_decode, json_encode, mb_strpos,
-	mb_strtolower, preg_match, realpath, rtrim, sleep, sprintf, str_replace, time, usleep;
+	mb_strtolower, preg_match, preg_replace, realpath, rtrim, sleep, sprintf, str_replace, time, usleep;
 
 use const DIRECTORY_SEPARATOR, JSON_BIGINT_AS_STRING, JSON_PRETTY_PRINT, JSON_THROW_ON_ERROR, JSON_UNESCAPED_SLASHES;
 
@@ -182,10 +182,7 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 	public function block(string $fromJSON = null):TERFBLOCKER5000{
 
 		if($fromJSON !== null && file_exists($fromJSON) && is_file($fromJSON) && is_readable($fromJSON)){
-			// for some reason there are sometimes nasty tab characters (\u0009) in the json that may prevent proper decode
-			$data = str_replace("\x09", '', file_get_contents($fromJSON));
-
-			$fromJSON = json_decode($data, true, JSON_THROW_ON_ERROR);
+			$fromJSON = json_decode(file_get_contents($fromJSON), true, JSON_THROW_ON_ERROR);
 		}
 
 		$this->performBlock($fromJSON ?? $this->positive);
@@ -532,8 +529,8 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 			$data[] = [
 				'screen_name'     => $user->screen_name,
 				'id'              => $user->id,
-				'name'            => $user->name,
-				'description'     => $user->description,
+				'name'            => preg_replace('/\s\s+/', ' ', $user->name),
+				'description'     => preg_replace('/\s\s+/', ' ', $user->description),
 				'location'        => $user->location,
 				'followers_count' => $user->followers_count,
 				'created_at'      => $user->created_at,

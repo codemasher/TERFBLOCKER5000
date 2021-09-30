@@ -13,6 +13,7 @@ namespace codemasher\TERFBLOCKER5000;
 use chillerlan\HTTP\Utils\Query;
 use chillerlan\OAuth\Providers\Twitter\Twitter;
 use chillerlan\Settings\SettingsContainerInterface;
+use Psr\Http\Message\ResponseInterface;
 use Psr\Log\{LoggerAwareInterface, LoggerAwareTrait, LoggerInterface, NullLogger};
 use InvalidArgumentException, RuntimeException;
 
@@ -20,7 +21,7 @@ use function chillerlan\HTTP\Utils\get_json;
 use function array_chunk, array_merge, array_unique, array_values, count, date, file_exists,
 	file_get_contents, file_put_contents, implode, in_array, is_array, is_dir, is_file,
 	is_numeric, is_readable, is_string, is_writable, json_decode, json_encode, mb_strpos,
-	mb_strtolower, preg_match, realpath, rtrim, sleep, sprintf, str_replace, usleep;
+	mb_strtolower, preg_match, realpath, rtrim, sleep, sprintf, str_replace, time, usleep;
 
 use const DIRECTORY_SEPARATOR, JSON_BIGINT_AS_STRING, JSON_PRETTY_PRINT, JSON_THROW_ON_ERROR, JSON_UNESCAPED_SLASHES;
 
@@ -272,7 +273,12 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 		while(true){
 			$response = $this->twitter->searchTweets($params);
 
-			if($response->getStatusCode() !== 200){
+			if($response->getStatusCode() === 429 || $response->getHeaderLine('x-rate-limit-remaining') === '0'){
+				$this->sleepOn429($response);
+
+				continue;
+			}
+			elseif($response->getStatusCode() !== 200){
 				break;
 			}
 
@@ -382,7 +388,12 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 		while(true){
 			$response = $this->twitter->{$endpointMethod}($params);
 
-			if($response->getStatusCode() !== 200){
+			if($response->getStatusCode() === 429 || $response->getHeaderLine('x-rate-limit-remaining') === '0'){
+				$this->sleepOn429($response);
+
+				continue;
+			}
+			elseif($response->getStatusCode() !== 200){
 				break;
 			}
 
@@ -426,7 +437,12 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 
 			usleep(1100000); // sleep for 1.1 seconds (900requests/15min)
 
-			if($response->getStatusCode() !== 200){
+			if($response->getStatusCode() === 429 || $response->getHeaderLine('x-rate-limit-remaining') === '0'){
+				$this->sleepOn429($response);
+
+				continue;
+			}
+			elseif($response->getStatusCode() !== 200){
 				continue; // i don't care
 			}
 
@@ -470,14 +486,16 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 			usleep(250000); // v1 API docs say the block endpoint has a limit, but apparently it doesn't :)
 #			sleep(20); // v2: 50requests/15min - for serious, twitter??? (hope the same as v1)
 
-			if($response->getStatusCode() !== 200){
+			if($response->getStatusCode() === 429 || $response->getHeaderLine('x-rate-limit-remaining') === '0'){
+				$this->sleepOn429($response);
+			}
+			elseif($response->getStatusCode() !== 200){
 				$user['retry']++;
 
 				if($user['retry'] < 3){
 					$blocklist[] = $user;
 				}
 
-				continue;
 			}
 
 			// since the API doesn't reurn a success, just the user object (which contains "muting" but not "blocked")
@@ -485,6 +503,23 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 
 		}
 
+	}
+
+	/**
+	 * evaluates the rate limit header and sleeps until reset
+	 */
+	protected function sleepOn429(ResponseInterface $response):void{
+		$reset = (int)$response->getHeaderLine('x-rate-limit-reset');
+		$now   = time();
+
+		// header might be not set - just pause for a bit
+		if($reset < $now){
+			sleep(5);
+
+			return;
+		}
+
+		sleep($reset - $now + 3);
 	}
 
 	/**

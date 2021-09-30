@@ -423,13 +423,14 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 
 			$response = $this->twitter->usersLookup($params);
 
+			usleep(1100000); // sleep for 1.1 seconds (900requests/15min)
+
 			if($response->getStatusCode() !== 200){
 				continue; // i don't care
 			}
 
 			$users = array_merge($users, get_json($response));
 
-			usleep(1100000); // sleep for 1.1 seconds (900requests/15min)
 		}
 
 		return $users;
@@ -465,6 +466,9 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 
 			$response = $this->twitter->block($params);
 
+			usleep(250000); // v1 API docs say the block endpoint has a limit, but apparently it doesn't :)
+#			sleep(20); // v2: 50requests/15min - for serious, twitter??? (hope the same as v1)
+
 			if($response->getStatusCode() !== 200){
 				$user['retry']++;
 
@@ -478,8 +482,6 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 			// since the API doesn't reurn a success, just the user object (which contains "muting" but not "blocked")
 			// there's no point in doing anything with the response...
 
-			usleep(250000); // v1 API docs say the block endpoint has a limit, but apparently it doesn't :)
-#			sleep(20); // v2: 50requests/15min - for serious, twitter??? (hope the same as v1)
 		}
 
 	}

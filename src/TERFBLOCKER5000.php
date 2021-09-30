@@ -15,11 +15,13 @@ use chillerlan\OAuth\Providers\Twitter\Twitter;
 use chillerlan\Settings\SettingsContainerInterface;
 use Psr\Log\{LoggerAwareInterface, LoggerAwareTrait, LoggerInterface, NullLogger};
 use InvalidArgumentException, RuntimeException;
+
 use function chillerlan\HTTP\Utils\get_json;
 use function array_chunk, array_merge, array_unique, array_values, count, date, file_exists,
 	file_get_contents, file_put_contents, implode, in_array, is_array, is_dir, is_file,
 	is_numeric, is_readable, is_string, is_writable, json_decode, json_encode, mb_strpos,
 	mb_strtolower, preg_match, realpath, rtrim, sleep, sprintf, str_replace, usleep;
+
 use const DIRECTORY_SEPARATOR, JSON_BIGINT_AS_STRING, JSON_PRETTY_PRINT, JSON_THROW_ON_ERROR, JSON_UNESCAPED_SLASHES;
 
 class TERFBLOCKER5000 implements LoggerAwareInterface{
@@ -36,8 +38,8 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 	 * TERFBLOCKER5000 Constructor
 	 */
 	public function __construct(Twitter $twitter, LoggerInterface $logger = null){
-		$this->twitter        = $twitter;
-		$this->logger         = $logger ?? new NullLogger;
+		$this->twitter = $twitter;
+		$this->logger  = $logger ?? new NullLogger;
 	}
 
 	/**
@@ -53,8 +55,7 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 				$this->all[] = $item;
 			}
 			elseif(is_string($item)){
-				$item = mb_strtolower($item);
-
+				$item  = mb_strtolower($item);
 				$any[] = $item;
 				$any[] = str_replace(' ', '', $item);
 			}

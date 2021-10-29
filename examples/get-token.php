@@ -14,11 +14,20 @@
  */
 
 /**
- * @var \chillerlan\OAuth\Providers\Twitter\Twitter $twitter
- * @var \chillerlan\OAuth\Storage\OAuthStorageInterface $storage
+ * @var \codemasher\TERFBLOCKER5000\TERFBLOCKER5000 $terfblocker
+ * @var \codemasher\TERFBLOCKER5000\TERFBLOCKER5000Options $options
+ * @var \Psr\Http\Client\ClientInterface $http
+ * @var \Psr\Log\LoggerAwareInterface $logger
  */
 
+use chillerlan\OAuth\Providers\Twitter\Twitter;
+use chillerlan\OAuth\Storage\SessionStorage;
+
 require_once __DIR__.'/common.php';
+
+// use the session storage during authentication
+$storage = new SessionStorage($options);
+$twitter = new Twitter($http, $storage, $options, $logger);
 
 $servicename = $twitter->serviceName;
 
@@ -28,7 +37,10 @@ if(isset($_GET['login']) && $_GET['login'] === $servicename){
 }
 // step 3: receive the access token
 elseif(isset($_GET['oauth_token']) && isset($_GET['oauth_verifier'])){
-	$twitter->getAccessToken($_GET['oauth_token'], $_GET['oauth_verifier']);
+	$token = $twitter->getAccessToken($_GET['oauth_token'], $_GET['oauth_verifier']);
+
+	// store the token in the database storage
+	$terfblocker->importUserToken($token);
 
 	// access granted, redirect
 	header('Location: ?granted='.$servicename);

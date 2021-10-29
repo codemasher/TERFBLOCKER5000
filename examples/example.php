@@ -6,15 +6,22 @@
  * @license      MIT
  */
 
+use chillerlan\OAuth\Core\AccessToken;
+
 /**
  * @var \codemasher\TERFBLOCKER5000\TERFBLOCKER5000 $terfblocker
+ * @var \chillerlan\OAuth\Core\AccessToken $token
  */
 
 require_once __DIR__.'/common.php';
 
+// @see https://github.com/chillerlan/php-oauth-providers/blob/main/examples/get-token/Twitter.php
+$token    = (new AccessToken)->fromJSON(file_get_contents(CFGDIR.'/Twitter.token.json'));
 $wordlist = require CFGDIR.'/wordlist.php';
 
 $terfblocker
+	// import a new twitter oauth token if needed
+	->importUserToken($token)
 	// set the list of terms to match against (required)
 	->setWordlist($wordlist)
 	// fetch from replies to a given tweet

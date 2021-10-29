@@ -9,10 +9,13 @@
 		"php": "^7.4 || ^8.0",
 		"ext-json": "*",
 		"ext-mbstring": "*",
+		"ext-sodium": "*",
 	    "psr/log": "^1.1 || ^2.0 || ^3.0",
+		"chillerlan/php-database": "dev-main#70c724739d4262b82522ce9644265510bc3d22cb",
 		"chillerlan/php-oauth-providers": "^2.0"
 	},
 	"require-dev": {
+		"chillerlan/php-cache": "^4.1",
 		"chillerlan/php-dotenv": "^2.1",
 		"phpunit/phpunit": "^9.5"
 	},
@@ -23,7 +26,8 @@
 	},
 	"autoload-dev": {
 		"psr-4": {
-			"codemasher\\TERFBLOCKER5000Tests\\": "tests"
+			"codemasher\\TERFBLOCKER5000Tests\\": "tests",
+			"chillerlan\\OAuthTest\\": "vendor/chillerlan/php-oauth-core/tests"
 		}
 	}
 }

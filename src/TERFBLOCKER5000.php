@@ -10,15 +10,19 @@
 
 namespace codemasher\TERFBLOCKER5000;
 
+use chillerlan\Database\Database;
 use chillerlan\HTTP\Utils\Query;
-use chillerlan\OAuth\Providers\Twitter\Twitter;
+use chillerlan\OAuth\Core\AccessToken;
+use chillerlan\OAuth\Providers\Twitter\{Twitter, TwitterCC};
+use chillerlan\OAuth\Storage\MemoryStorage;
 use chillerlan\Settings\SettingsContainerInterface;
+use Psr\Http\Client\ClientInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Log\{LoggerAwareInterface, LoggerAwareTrait, LoggerInterface, NullLogger};
-use InvalidArgumentException, RuntimeException;
+use Exception, InvalidArgumentException, RuntimeException;
 
 use function chillerlan\HTTP\Utils\get_json;
-use function array_chunk, array_merge, array_unique, array_values, count, date, file_exists,
+use function array_chunk, array_key_exists, array_merge, array_shift, array_unique, array_values, count, date, file_exists,
 	file_get_contents, file_put_contents, implode, in_array, is_array, is_dir, is_file,
 	is_numeric, is_readable, is_string, is_writable, json_decode, json_encode, mb_strpos,
 	mb_strtolower, preg_match, preg_replace, realpath, rtrim, sleep, sprintf, str_replace, time, usleep;
@@ -28,8 +32,12 @@ use const DIRECTORY_SEPARATOR, JSON_BIGINT_AS_STRING, JSON_PRETTY_PRINT, JSON_TH
 class TERFBLOCKER5000 implements LoggerAwareInterface{
 	use LoggerAwareTrait;
 
-	protected Twitter                    $twitter;
+	/** @var \codemasher\TERFBLOCKER5000\TERFBLOCKER5000Options */
 	protected SettingsContainerInterface $options;
+	protected ClientInterface            $http;
+	protected Database                   $db;
+	protected Twitter                    $twitter;
+	protected TwitterCC                  $twitterCC;
 	protected array                      $any      = [];
 	protected array                      $all      = [];
 	protected array                      $positive = [];
@@ -38,9 +46,52 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 	/**
 	 * TERFBLOCKER5000 Constructor
 	 */
-	public function __construct(Twitter $twitter, LoggerInterface $logger = null){
-		$this->twitter = $twitter;
-		$this->logger  = $logger ?? new NullLogger;
+	public function __construct(
+		ClientInterface            $http,
+		Database                   $db,
+		SettingsContainerInterface $options,
+		LoggerInterface            $logger = null
+	){
+		$this->http      = $http;
+		$this->db        = $db;
+		$this->options   = $options;
+		$this->logger    = $logger ?? new NullLogger;
+
+		$this->twitter   = new Twitter($this->http, new MemoryStorage, $this->options, $this->logger);
+		$this->twitterCC = new TwitterCC($this->http, new MemoryStorage, $this->options, $this->logger);
+
+		$this->db->connect();
+		$this->twitterCC->getClientCredentialsToken();
+	}
+
+	/**
+	 *
+	 */
+	public function importUserToken(AccessToken $token):TERFBLOCKER5000{
+		// use a temporary storage to verify the token
+		$storage = new MemoryStorage;
+		$storage->storeAccessToken($this->twitter->serviceName, $token);
+		$this->twitter->setStorage($storage);
+		$response = $this->twitter->verifyCredentials(['include_entities' => 'false', 'skip_status' => 'true']);
+		$status   = $response->getStatusCode();
+
+		if($status === 401){
+			throw new InvalidArgumentException('invalid token');
+		}
+#		elseif($status === 429){}
+		elseif($status !== 200){
+			throw new Exception(sprintf('error while verifying token: HTTP/%s %s', $status, $response->getReasonPhrase()));
+		}
+
+		$user = get_json($response);
+
+		$storage = new TERFBLOCKER5000TokenStorage($this->db, $this->options, $this->logger);
+		$storage->setUserID($user->id, $user->screen_name);
+		// store the token and switch to db storage
+		$storage->storeAccessToken($this->twitter->serviceName, $token);
+		$this->twitter->setStorage($storage);
+
+		return $this;
 	}
 
 	/**
@@ -268,7 +319,7 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 	protected function getUsersFromV1SearchTweets(array $params, string $statusID = null, bool $enforceLimit = null):void{
 
 		while(true){
-			$response = $this->twitter->searchTweets($params);
+			$response = $this->twitterCC->searchTweets($params);
 
 			if($response->getStatusCode() === 429 || $response->getHeaderLine('x-rate-limit-remaining') === '0'){
 				$this->sleepOn429($response);
@@ -305,8 +356,8 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 			$params = Query::parse($json->search_metadata->next_results);
 
 			if($enforceLimit){
-				// sleep for 5.1 seconds (API limit: 180requests/15min - too lazy to implement a token bucket...)
-				usleep(5100000);
+				// sleep for 2.1 seconds (API limit: 450requests/15min - too lazy to implement a token bucket...)
+				usleep(2100000);
 			}
 		}
 
@@ -375,15 +426,23 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 	 */
 	protected function getIDs(string $endpointMethod, array $params, bool $enforceLimit = null):array{
 
-		if(!in_array($endpointMethod, ['blocksIds', 'followersIds', 'statusesRetweetersIds'])){
+		$endpoints = [
+			'blocksIds'             => 61, // user/app 15/900s
+			'followersIds'          => 61,
+			'statusesRetweetersIds' => 3, // app, user: 12
+		];
+
+		if(!array_key_exists($endpointMethod, $endpoints)){
 			throw new InvalidArgumentException('invalid endpoint');
 		}
 
+		// use app auth on certain endpoints for improved request limits
+		$client = in_array($endpointMethod, ['statusesRetweetersIds']) ? 'twitterCC' : 'twitter';
 		$params = array_merge(['cursor' => -1, 'stringify_ids' => 'true'], $params);
 		$ids    = [];
 
 		while(true){
-			$response = $this->twitter->{$endpointMethod}($params);
+			$response = $this->{$client}->{$endpointMethod}($params);
 
 			if($response->getStatusCode() === 429 || $response->getHeaderLine('x-rate-limit-remaining') === '0'){
 				$this->sleepOn429($response);
@@ -407,7 +466,7 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 			$params['cursor'] = $json->next_cursor_str;
 
 			if($enforceLimit){
-				sleep(61); // take a looong break (15requests/15min)
+				sleep($endpoints[$endpointMethod]); // take a break
 			}
 		}
 

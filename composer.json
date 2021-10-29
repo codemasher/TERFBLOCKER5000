@@ -9,6 +9,7 @@
 		"php": "^7.4 || ^8.0",
 		"ext-json": "*",
 		"ext-mbstring": "*",
+		"ext-mysqli": "*",
 		"ext-sodium": "*",
 	    "psr/log": "^1.1 || ^2.0 || ^3.0",
 		"chillerlan/php-database": "dev-main#70c724739d4262b82522ce9644265510bc3d22cb",

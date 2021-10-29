@@ -369,7 +369,7 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 	protected function detect(array $users):void{
 
 		foreach($users as $user){
-			if($this->match($user->name, $user->description)){
+			if($this->match($user->name, $user->description, $user->location)){
 				$this->positive[$user->id] = $user;
 			}
 			else{
@@ -382,25 +382,27 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 	/**
 	 * simple and cheap matching against a list of terms - no regex cannons fired (WIP)
 	 */
-	protected function match(string $name, string $bio):bool{
+	protected function match(string $name, string $bio, string $location):bool{
 
 		if(empty($this->any) && empty($this->all)){
 			throw new InvalidArgumentException('no terms to match given');
 		}
 
-		$s = ['"', '\'', '-', '/', '\\'];
-		$r = [ '',   '', ' ', ' ',  ' '];
-
-		$name = str_replace($s, $r, $name);
-		$bio  = str_replace($s, $r, $bio);
+		foreach(['name', 'bio', 'location'] as $var){
+			${$var} = str_replace(
+				['"', '\'', '-', '/', '\\'],
+				[ '',   '', ' ', ' ',  ' '],
+				${$var}
+			);
+		}
 
 		foreach($this->any as $term){
-			if(mb_strpos($name."\x00\x00\x00\x00".$bio, $term) !== false){
+			if(mb_strpos($name."\x00\x00\x00\x00".$location."\x00\x00\x00\x00".$bio, $term) !== false){
 				return true;
 			}
 		}
 
-		foreach([$name, $bio] as $str){
+		foreach([$name, $bio, $location] as $str){
 
 			foreach($this->all as $arr){
 				$check = [];

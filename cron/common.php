@@ -51,7 +51,7 @@ $options = new TERFBLOCKER5000Options([
 	'$storageCryptoNonce' => $env->DB_CRYPTO_NONCE,
 ]);
 
-$logger      = new OAuthTestLogger('debug'); // PSR-3
+$logger      = new OAuthTestLogger('info'); // PSR-3
 $http        = new CurlClient($options, null, $logger); // PSR-18
 $db          = new Database($options, new MemoryCache, $logger);
 $terfblocker = new TERFBLOCKER5000($http, $db, $options, $logger);

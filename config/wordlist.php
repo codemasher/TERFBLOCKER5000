@@ -18,7 +18,7 @@
 return [
 	// note: the heart emojis may cause too many false positives
 	// former genderqueer flag, suffragette colours co-opted by terfs (green/white/purple)
-#	['💚', '🤍', '💜'], // d83d dc9a, d83e dd0d, d83d dc9c (hearts)
+	['💚', '🤍', '💜'], // d83d dc9a, d83e dd0d, d83d dc9c (hearts)
 	['🟩', '⬜️', '🟪'], // d83d dfe9, 2b1c fe0f, d83d dfea (squares)
 	['🟢', '⚪️', '🟣'], // d83d dfe2, 26aa fe0f, d83d dfe3 (circle)
 
@@ -27,17 +27,23 @@ return [
 	['🟧', '⬛️'], // d83d dfe7, 2b1b fe0f (squares)
 	['🟠', '⚫️'], // d83d dfe0, 26ab fe0f (circle)
 
+	'%💚🤍💜%',
+	'%🟢⚪️🟣%',
+	'%🟩⬜️🟪%',
+	'🟧⬛️',
+	'🟠⚫️',
 	// words/terms
 	'GC Feminist',
 	'rad fem',
 	'radical feminist',
 	'gender crit',
-	'adult human female',
-	'adult human male',
-	'adult female human',
+	'gen crit',
+	'human female',
+	'human male',
+	'female human',
+	'female woman',
 	'shrill siren',
 	'cis is a slur',
-	'Gender free',
 	'LGB Alliance',
 	'Save Womens Sports',
 	'Women Wont Wheesht',
@@ -69,6 +75,32 @@ return [
 	'Gender identity is a lie',
 	'Womanhood is not a feeling',
 	'gender logical',
+	'LGBTerf',
+	'Gender cynic',
+	'Chromos',
+	'anti sex work',
+	'sex work critical',
+	'anti porn',
+	'Team TERF',
+	'No to Stonewall',
+	'cis sexual',
+	'cis romantic',
+	'single sex space',
+	'body with vagina',
+	'Woman Is Not a Feeling',
+	'Woman Is Not An Identity',
+	'female is not a feeling',
+	'Women Are Born Not Worn',
+	'trans widow',
+	'same sex attracted',
+	'stop with the cis',
+	'Anti woke',
+	'feminazi',
+	'feminism that centers women',
+	'Sexo No Es Genero',
+	'Gay not CIS',
+	'Lesbian Not Queer',
+	'Identifies as Attack Helicopter',
 
 	// "i stand with" - turns out that prefix is unnecessary...
 	'JKR',
@@ -81,6 +113,7 @@ return [
 	'Maya Forstater',
 	'Jess De Wahls',
 	'Keira Bell',
+	'Dr Kathleen Stock',
 
 	// throw in some magahats etc for good measure
 	'#MAGA',
@@ -89,7 +122,7 @@ return [
 	'Trump 202',
 	'Trump Train',
 	'Trump won',
-	'Trump Follower',
+#	'Trump Follower',
 	'Trump Lover', // eww
 	'for Trump',
 	'pro Trump',
@@ -100,14 +133,32 @@ return [
 	'Make Britain British Again',
 	'All Lives Matter',
 	'Blue Lives Matter',
+	'@realDonaldTrump',
+	'Trump Was Right',
+	'Cult45',
+	'Build The Wall',
+	'Drain The Swamp',
+	'China Lied People Died',
+	'right winger',
+	'right leaning',
+	'alt right',
+	'Climate Hoax',
+	'No White Guilt',
+	'Its OK To Be White',
+	'Save White Culture',
+	'Patriotic Alternative',
 
 	// may cause false positives
 #	'GC', // too ambiguous
+#	'TERF', // too ambiguous
 #	'Love Trump', // -> "love trumps hate"
 #	'Republican', // -> "former/ex republican", "Republicans are awful"
 #	'Trump Supporter', // -> "former trump supporter"
 #	'Conservative', // -> "enemy of the Conservative state", "Anti Death Cultist (Nazi/Terf/Conservative)"
 #	'Super Gay', // -> "Super gay trans woman", "super gay for pretty girls"
 #	'Super Bi', // -> "Superbike"
-#	'No Thank You',
+	'Gender free',
+	'No Thank You',
+
+	// detrans + lizard emoji??? 🦎
 ];

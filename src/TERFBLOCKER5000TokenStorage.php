@@ -11,6 +11,7 @@
 namespace codemasher\TERFBLOCKER5000;
 
 use chillerlan\Database\Database;
+use chillerlan\Database\ResultInterface;
 use chillerlan\OAuth\Core\AccessToken;
 use chillerlan\OAuth\Storage\OAuthStorageAbstract;
 use chillerlan\OAuth\Storage\OAuthStorageException;
@@ -22,7 +23,11 @@ use function sodium_bin2hex;
 use function sodium_crypto_secretbox;
 use function sodium_crypto_secretbox_open;
 use function sodium_hex2bin;
+use function strtolower;
 
+/**
+ * @property \codemasher\TERFBLOCKER5000\TERFBLOCKER5000Options $options
+ */
 class TERFBLOCKER5000TokenStorage extends OAuthStorageAbstract{
 
 	protected Database $db;
@@ -48,6 +53,47 @@ class TERFBLOCKER5000TokenStorage extends OAuthStorageAbstract{
 
 		$this->db = $db;
 		$this->db->connect();
+	}
+
+	/**
+	 * @throws \Exception
+	 */
+	public function setUserID(string $userID, string $screenName):TERFBLOCKER5000TokenStorage{
+
+		if(empty($userID) || empty($screenName)){
+			throw new OAuthStorageException('invalid user id');
+		}
+
+		$this->userID     = $userID;
+		$this->screenName = $screenName;
+
+		return $this;
+	}
+
+	/**
+	 * @throws \Exception
+	 */
+	public function setUserFromScreenName(string $screenName):TERFBLOCKER5000TokenStorage{
+
+		if(empty($screenName)){
+			throw new OAuthStorageException('screen name');
+		}
+
+		$result = $this->db->select
+			->cols(['user_id', 'screen_name'])
+			->from([$this->options->table_token])
+			->where(['screen_name', 'LOWER'], strtolower($screenName))
+			->limit(1)
+			->query();
+
+		if(!$result instanceof ResultInterface || $result->count() === 0){
+			throw new OAuthStorageException('token not found');
+		}
+
+		$this->userID     = $result[0]->user_id;
+		$this->screenName = $result[0]->screen_name;
+
+		return $this;
 	}
 
 	/** @inheritDoc */
@@ -78,6 +124,7 @@ class TERFBLOCKER5000TokenStorage extends OAuthStorageAbstract{
 	public function getAccessToken(string $service):AccessToken{
 
 		$r = $this->db->select
+			->cached($this->options->storageCacheTTL)
 			->cols(['token'])
 			->from([$this->options->table_token])
 			->where('user_id', $this->userID)
@@ -94,6 +141,7 @@ class TERFBLOCKER5000TokenStorage extends OAuthStorageAbstract{
 	/** @inheritDoc */
 	public function hasAccessToken(string $service):bool{
 		return (bool)$this->db->select
+			->cached($this->options->storageCacheTTL)
 			->cols(['token'])
 			->from([$this->options->table_token])
 			->where('user_id', $this->userID)
@@ -137,21 +185,6 @@ class TERFBLOCKER5000TokenStorage extends OAuthStorageAbstract{
 	/** @inheritDoc */
 	public function clearAllCSRFStates():bool{
 		throw new OAuthStorageException('not supported');
-	}
-
-	/**
-	 * @throws \Exception
-	 */
-	public function setUserID(string $userID, string $screenName):TERFBLOCKER5000TokenStorage{
-
-		if(empty($userID) || empty($screenName)){
-			throw new OAuthStorageException('invalid user id');
-		}
-
-		$this->userID     = $userID;
-		$this->screenName = $screenName;
-
-		return $this;
 	}
 
 	/** @inheritDoc */

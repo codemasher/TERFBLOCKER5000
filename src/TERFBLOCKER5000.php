@@ -10,7 +10,7 @@
 
 namespace codemasher\TERFBLOCKER5000;
 
-use chillerlan\Database\Database;
+use chillerlan\Database\{Database, ResultInterface, ResultRow};
 use chillerlan\HTTP\Utils\Query;
 use chillerlan\OAuth\Core\AccessToken;
 use chillerlan\OAuth\Providers\Twitter\{Twitter, TwitterCC};
@@ -19,15 +19,15 @@ use chillerlan\Settings\SettingsContainerInterface;
 use Psr\Http\Client\ClientInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Log\{LoggerAwareInterface, LoggerAwareTrait, LoggerInterface, NullLogger};
-use Exception, InvalidArgumentException, RuntimeException;
+use Closure, InvalidArgumentException, RuntimeException, Throwable;
 
 use function chillerlan\HTTP\Utils\get_json;
-use function array_chunk, array_key_exists, array_merge, array_shift, array_unique, array_values, count, date, file_exists,
-	file_get_contents, file_put_contents, implode, in_array, is_array, is_dir, is_file,
-	is_numeric, is_readable, is_string, is_writable, json_decode, json_encode, mb_strpos,
-	mb_strtolower, preg_match, preg_replace, realpath, rtrim, sleep, sprintf, str_replace, time, usleep;
+use function array_column, array_diff, array_key_exists, array_merge, array_unique, array_values, count,
+	file_get_contents, implode, in_array, is_array, is_file, is_numeric, is_readable, is_string,
+	json_decode, mb_strpos, mb_strtolower, preg_match, preg_replace, realpath, sleep, sprintf,
+	str_replace, strtolower, strtotime, time, trim, usleep;
 
-use const DIRECTORY_SEPARATOR, JSON_BIGINT_AS_STRING, JSON_PRETTY_PRINT, JSON_THROW_ON_ERROR, JSON_UNESCAPED_SLASHES;
+use const JSON_THROW_ON_ERROR;
 
 class TERFBLOCKER5000 implements LoggerAwareInterface{
 	use LoggerAwareTrait;
@@ -40,8 +40,7 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 	protected TwitterCC                  $twitterCC;
 	protected array                      $any      = [];
 	protected array                      $all      = [];
-	protected array                      $positive = [];
-	protected array                      $negative = [];
+	protected array                      $blockIDs = []; // needs to be reset before calling prepareUserValues()
 
 	/**
 	 * TERFBLOCKER5000 Constructor
@@ -65,25 +64,14 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 	}
 
 	/**
-	 *
+	 * Import a user token from an external source and store it in the database
 	 */
 	public function importUserToken(AccessToken $token):TERFBLOCKER5000{
-		// use a temporary storage to verify the token
-		$storage = new MemoryStorage;
-		$storage->storeAccessToken($this->twitter->serviceName, $token);
-		$this->twitter->setStorage($storage);
-		$response = $this->twitter->verifyCredentials(['include_entities' => 'false', 'skip_status' => 'true']);
-		$status   = $response->getStatusCode();
+		$user = $this->verifyToken($token);
 
-		if($status === 401){
+		if($user === null){
 			throw new InvalidArgumentException('invalid token');
 		}
-#		elseif($status === 429){}
-		elseif($status !== 200){
-			throw new Exception(sprintf('error while verifying token: HTTP/%s %s', $status, $response->getReasonPhrase()));
-		}
-
-		$user = get_json($response);
 
 		$storage = new TERFBLOCKER5000TokenStorage($this->db, $this->options, $this->logger);
 		$storage->setUserID($user->id, $user->screen_name);
@@ -92,6 +80,77 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 		$this->twitter->setStorage($storage);
 
 		return $this;
+	}
+
+	/**
+	 * Set the token from an existing user
+	 */
+	public function setTokenFromScreenName(string $screen_name):TERFBLOCKER5000{
+		$storage = new TERFBLOCKER5000TokenStorage($this->db, $this->options, $this->logger);
+		$storage->setUserFromScreenName($screen_name);
+
+		if(!$this->verifyToken($storage->getAccessToken($this->twitter->serviceName))){
+			throw new InvalidArgumentException('invalid token');
+		}
+
+		$this->twitter->setStorage($storage);
+
+		return $this;
+	}
+
+	/**
+	 * tries to verify a user token and returns the user object on success, null otherwise
+	 */
+	protected function verifyToken(AccessToken $token):?object{
+		// use a temporary storage to verify the token
+		$storage = new MemoryStorage;
+		$storage->storeAccessToken($this->twitter->serviceName, $token);
+		$this->twitter->setStorage($storage);
+
+		while(true){
+
+			try{
+				$response = $this->twitter->verifyCredentials(['include_entities' => 'false', 'skip_status' => 'true']);
+			}
+			catch(Throwable $e){
+				$this->logger->error(sprintf('http client error: %s', $e->getMessage()));
+
+				continue;
+			}
+
+			$status = $response->getStatusCode();
+
+			// yay
+			if($status === 200){
+				$user = get_json($response);
+
+				if(isset($user->id, $user->screen_name)){
+					return $user;
+				}
+
+				break;
+			}
+			// invalid
+			elseif($status === 401){
+				// @todo: remove token?
+				$this->logger->notice(sprintf('invalid token for user: %s', $token->extraParams['screen_name'] ?? ''));
+
+				break;
+			}
+			// request limit
+			elseif($status === 429){
+				$this->sleepOn429($response);
+			}
+			// nay
+			else{
+				$this->logger->error(sprintf('response error: HTTP/%s %s', $status, $response->getReasonPhrase()));
+
+				break;
+			}
+
+		}
+
+		return null;
 	}
 
 	/**
@@ -125,7 +184,7 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 	 *
 	 * caution: highly inefficient (but the only way with the v1 API)
 	 */
-	public function fromMentions(string $statusURL, bool $enforceLimit = null):TERFBLOCKER5000{
+	public function fromMentions(string $statusURL, string $blocktype = null, bool $enforceLimit = null):TERFBLOCKER5000{
 		[$screen_name, $id] = $this::parseTwitterURL($statusURL);
 
 		if(empty($screen_name)){
@@ -140,7 +199,7 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 			'result_type'      => 'mixed',
 		];
 
-		$this->getUsersFromV1SearchTweets($params, $id, $enforceLimit);
+		$this->getUsersFromV1SearchTweets($params, $id, $blocktype, $enforceLimit);
 
 		return $this;
 	}
@@ -150,7 +209,7 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 	 *
 	 * @see https://developer.twitter.com/en/docs/twitter-api/v1/tweets/search/guides/standard-operators
 	 */
-	public function fromSearch(string $q, bool $enforceLimit = null):TERFBLOCKER5000{
+	public function fromSearch(string $q, string $blocktype = null, bool $enforceLimit = null):TERFBLOCKER5000{
 
 		$params = [
 			'q'                => $q,
@@ -159,40 +218,46 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 			'result_type'      => 'mixed',
 		];
 
-		$this->getUsersFromV1SearchTweets($params, null, $enforceLimit);
+		$this->getUsersFromV1SearchTweets($params, null, $blocktype, $enforceLimit);
 
 		return $this;
 	}
 
 	/**
-	 * fetches the followers of the given profile
+	 * fetches the follower IDs of the given profile
 	 *
 	 * caution: slow, depending on the number of followers
 	 *
-	 * @see https://developer.twitter.com/en/docs/twitter-api/v1/accounts-and-users/follow-search-get-users/api-reference/get-users-show
 	 * @see https://developer.twitter.com/en/docs/twitter-api/v1/accounts-and-users/follow-search-get-users/api-reference/get-followers-ids
 	 */
-	public function fromFollowers(string $profileURL):TERFBLOCKER5000{
-		[$screen_name,] = $this::parseTwitterURL($profileURL);
+	public function fromFollowers(string $screen_name, bool $enforceLimit = null):TERFBLOCKER5000{
+		$this->getIDs('followersIds', ['screen_name' => $screen_name], $enforceLimit, true);
 
-		if(empty($screen_name)){
-			throw new InvalidArgumentException('no screen_name given');
+		return $this;
+	}
+
+	/**
+	 * fetches the account IDs the given profile is following (internally called "friends")
+	 *
+	 * caution: slow, depending on the number of followed accounts
+	 *
+	 * @see https://developer.twitter.com/en/docs/twitter-api/v1/accounts-and-users/follow-search-get-users/api-reference/get-friends-ids
+	 */
+	public function fromFollowing(string $screen_name, bool $enforceLimit = null):TERFBLOCKER5000{
+		$this->getIDs('friendsIds', ['screen_name' => $screen_name], $enforceLimit, true);
+
+		return $this;
+	}
+
+	/**
+	 * Similar to fromFollowers() and fromFollowing() with the difference that the input parameter is a list of screen_names.
+	 */
+	public function fromFollowersAndFollowing(array $screen_names, bool $enforceLimit = null):TERFBLOCKER5000{
+
+		foreach($screen_names as $screen_name){
+			$this->getIDs('followersIds', ['screen_name' => $screen_name], $enforceLimit, true);
+			$this->getIDs('friendsIds', ['screen_name' => $screen_name], $enforceLimit, true);
 		}
-
-		$userResponse = $this->twitter->usersShow(['screen_name' => $screen_name, 'include_entities' => 'false']);
-
-		if($userResponse->getStatusCode() !== 200){
-			throw new RuntimeException(sprintf(
-				'Twitter::usersShow() response error: HTTP/%s %s',
-				$userResponse->getStatusCode(),
-				$userResponse->getReasonPhrase()
-			));
-		}
-
-		$user        = get_json($userResponse);
-		$followerIDs = $this->getIDs('followersIds', ['screen_name' => $screen_name], $user->followers_count > 50000);
-
-		$this->detect($this->getUserProfiles($followerIDs));
 
 		return $this;
 	}
@@ -219,80 +284,94 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 			$enforceLimit = $status->retweet_count > 50000;
 		}
 
-		$ids = $this->getIDs('statusesRetweetersIds', ['id' => $id, 'count' => 100], $enforceLimit);
-
-		$this->detect($this->getUserProfiles($ids));
+		$this->getIDs('statusesRetweetersIds', ['id' => $id, 'count' => 100], $enforceLimit, true);
 
 		return $this;
 	}
 
 	/**
-	 * blocks the users from the internal "positive" list or from a given .json file.
-	 * the json has to be an array of objects similar to a twitter user object with at least a "screen_name" or "id" element.
+	 * Adds a list of accounts via screen name to the profile table.
+	 * Additionally adds them to the block- or exclusion lists, indicated by the $blocktype parameter.
+	 *
+	 * Valid values for $blocktype are: "always", "block", "never"
+	 *
+	 * @see https://developer.twitter.com/en/docs/twitter-api/v1/data-dictionary/object-model/user
 	 */
-	public function block(string $fromJSON = null):TERFBLOCKER5000{
+	public function fromScreenNames(array $screen_names, string $blocktype = null):TERFBLOCKER5000{
+		$this->blockIDs = [];
 
-		if($fromJSON !== null && file_exists($fromJSON) && is_file($fromJSON) && is_readable($fromJSON)){
-			$fromJSON = json_decode(file_get_contents($fromJSON), true, JSON_THROW_ON_ERROR);
+		foreach(array_unique($screen_names) as $screen_name){
+			$user = $this->getUserprofile('twitter.com/'.trim($screen_name));
+
+			if($user === null){
+				continue;
+			}
+
+			if($blocktype !== 'never'){
+				$this->blockIDs[$user->id] = ['id' => $user->id];
+			}
+
+			$this->db->insert
+				->into($this->options->table_profiles, 'REPLACE', 'id')
+				->values($this->prepareUserValues($user))
+				->query();
+
+			$this->logger->info(sprintf('added: %s', $screen_name));
 		}
 
-		$this->performBlock($fromJSON ?? $this->positive);
+		$this->addBlockIDs($blocktype);
 
 		return $this;
 	}
 
 	/**
-	 * Fetches a list of blocked accounts for the authenticated user (WIP)
+	 * Fetches a list of blocked account IDs for the authenticated user (WIP)
 	 *
 	 * @see https://developer.twitter.com/en/docs/twitter-api/v1/accounts-and-users/mute-block-report-users/api-reference/get-blocks-ids
 	 */
-	public function getBlocklist(bool $enforceLimit = null):array{
-		return $this->getUserProfiles($this->getIDs('blocksIds', [], $enforceLimit));
-	}
-
-	/**
-	 * saves the internal positive/negative lists to a .json file in the given path
-	 */
-	public function save(string $path):TERFBLOCKER5000{
-		$path = realpath(rtrim($path, '\\/')).DIRECTORY_SEPARATOR;
-
-		if(!file_exists($path) || !is_dir($path) || !is_writable($path)){
-			throw new InvalidArgumentException('invalid path given');
-		}
-
-		$date = date('Y.m.d-H.i.s');
-
-		foreach(['positive', 'negative'] as $v){
-			$this->saveToJson($this->{$v}, sprintf('%s%s-%s.json', $path, $v, $date));
-		}
+	public function fromBlocklist(bool $enforceLimit = null):TERFBLOCKER5000{
+		$this->getIDs('blocksIds', [], $enforceLimit, true);
 
 		return $this;
 	}
 
 	/**
-	 * fetch users from a conversation via "early access" v2 API (WIP)
+	 * Adds a list of IDs from a json file to the profile table
+	 *
+	 * JSON format: [{"id": 123456, ...}, ...]
 	 */
-/*	public function fromConversation(string $statusURL, bool $enforceLimit = null):TERFBLOCKER5000{
-		[$screen_name, $id] = $this::parseTwitterURL($statusURL);
+	public function fromJSON(string $file):TERFBLOCKER5000{
+		$json = $this->parseJSONFile($file);
+		$ids  = array_column($json, 'id');
 
-		// temp workaround as the v2 endpoints are not yet implemented in oauth-providers
-		$r1 = $this->twitter->sendRequest($this->requestFactory->createRequest('GET', 'https://api.twitter.com/2/tweets?ids='.$id.'&tweet.fields=conversation_id'));
-
-		if($r1->getStatusCode() === 200){
-			$json = get_json($r1);
-
-			if(isset($json->data[0])){
-				$r2 = $this->twitter->sendRequest($this->requestFactory->createRequest('GET', 'https://api.twitter.com/2/tweets/search/recent?query=conversation_id:'.$json->data[0]->conversation_id));
-
-				// -> unauthorized (waiting for v2 developer account approval)
-				var_dump(get_json($r2));
-
-			}
+		if(empty($ids)){
+			throw new RuntimeException('no ids found');
 		}
+
+		$this->addIDs($ids);
 
 		return $this;
 	}
-*/
+
+	/**
+	 * loads a json file, does a bit of cleanup and returns the result array on success
+	 */
+	protected function parseJSONFile(string $file):array{
+		$file = realpath($file);
+
+		if(!is_readable($file) || !is_file($file)){
+			throw new InvalidArgumentException(sprintf('invalid source file given: %s', $file));
+		}
+
+		$data = str_replace("\t", '    ', file_get_contents($file));
+		$json = json_decode($data, false, 512, JSON_THROW_ON_ERROR);
+
+		if(!is_array($json)){
+			throw new InvalidArgumentException(sprintf('decoded source is not an array: %s', $file));
+		}
+
+		return $json;
+	}
 
 	/**
 	 * parses a given sting and checks whether it's a snowflake id (64bit numerical) or a twitter profile URL
@@ -316,17 +395,19 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 	/**
 	 * @see https://developer.twitter.com/en/docs/twitter-api/v1/tweets/search/api-reference/get-search-tweets
 	 */
-	protected function getUsersFromV1SearchTweets(array $params, string $statusID = null, bool $enforceLimit = null):void{
+	protected function getUsersFromV1SearchTweets(array $params, string $statusID = null, $blocktype = null, bool $enforceLimit = null):void{
 
 		while(true){
 			$response = $this->twitterCC->searchTweets($params);
 
-			if($response->getStatusCode() === 429 || $response->getHeaderLine('x-rate-limit-remaining') === '0'){
+			$status = $response->getStatusCode();
+
+			if($status === 429){
 				$this->sleepOn429($response);
 
 				continue;
 			}
-			elseif($response->getStatusCode() !== 200){
+			elseif($status !== 200){
 				break;
 			}
 
@@ -336,7 +417,8 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 				break;
 			}
 
-			$users = [];
+			$this->blockIDs = [];
+			$values         = [];
 
 			foreach($json->statuses as $tweet){
 
@@ -344,10 +426,15 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 					continue;
 				}
 
-				$users[$tweet->user->id_str] = $tweet->user;
+				$values[$tweet->user->id_str] = $this->prepareUserValues($tweet->user);
 			}
 
-			$this->detect($users);
+			$this->db->insert
+				->into($this->options->table_profiles, 'REPLACE', 'id')
+				->values(array_values($values))
+				->multi();
+
+			$this->addBlockIDs($blocktype);
 
 			if(!isset($json->search_metadata, $json->search_metadata->next_results) || empty($json->search_metadata->next_results)){
 				break;
@@ -364,19 +451,69 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 	}
 
 	/**
-	 * the detector executes the matcher(s) and assigns the matches to positive/negative lists
+	 * @see https://developer.twitter.com/en/docs/twitter-api/v1/data-dictionary/object-model/user
+	 * @see https://developer.twitter.com/en/docs/twitter-api/data-dictionary/object-model/user
 	 */
-	protected function detect(array $users):void{
+	protected function prepareUserValues(object $user):array{
+		$name        = preg_replace('/\s\s+/', ' ', $user->name ?? '');
+		$description = preg_replace('/\s\s+/', ' ', $user->description ?? '');
+		$location    = preg_replace('/\s\s+/', ' ', $user->location ?? '');
 
-		foreach($users as $user){
-			if($this->match($user->name, $user->description, $user->location)){
-				$this->positive[$user->id] = $user;
-			}
-			else{
-				$this->negative[$user->id] = $user;
-			}
+		if($this->match($name, $description, $location)){
+			$this->blockIDs[$user->id] = ['id' => $user->id];
 		}
 
+		return [
+			'screen_name'     => $user->screen_name ?? $user->username,
+			'name'            => $name,
+			'description'     => $description,
+			'location'        => $location,
+			'followers_count' => $user->followers_count ?? $user->public_metrics->followers_count ?? 0,
+			'friends_count'   => $user->friends_count ?? $user->public_metrics->following_count ?? 0,
+			'created_at'      => strtotime($user->created_at ?? ''),
+			'verified'        => (int)($user->verified ?? 0),
+			// we put id as last field; in INSERTs it doesn't matter for the querybuilder as the fields are named.
+			// in UPDATE queries it is required in the last position (WHERE condition) as the field names are ignored.
+			'id'              => $user->id,
+		];
+	}
+
+	/**
+	 * needs to be called after collecting IDs via prepareUserValues()
+	 *
+	 * @see \codemasher\TERFBLOCKER5000\TERFBLOCKER5000::prepareUserValues()
+	 */
+	protected function addBlockIDs(string $blocktype):void{
+		$blocktype = strtolower(trim($blocktype));
+
+		if(!in_array($blocktype, ['always', 'block', 'never']) || empty($this->blockIDs)){
+			return;
+		}
+
+		$blockIDs = array_values($this->blockIDs);
+
+		$this->logger->info(sprintf('filtered IDs (%s): %s', $blocktype, implode(', ', array_column($blockIDs, 'id'))));
+
+		if($blocktype === 'never'){
+			$this->db->insert
+				->into($this->options->table_block_never, 'IGNORE', 'id')
+				->values($blockIDs)
+				->multi();
+
+			return;
+		}
+
+		$this->db->insert
+			->into($this->options->table_blocklist, 'IGNORE', 'id')
+			->values($blockIDs)
+			->multi();
+
+		if($blocktype === 'always'){
+			$this->db->insert
+				->into($this->options->table_block_always, 'IGNORE', 'id')
+				->values($blockIDs)
+				->multi();
+		}
 	}
 
 	/**
@@ -388,21 +525,19 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 			throw new InvalidArgumentException('no terms to match given');
 		}
 
-		foreach(['name', 'bio', 'location'] as $var){
-			${$var} = str_replace(
-				['"', '\'', '-', '/', '\\'],
-				[ '',   '', ' ', ' ',  ' '],
-				${$var}
-			);
-		}
-
-		foreach($this->any as $term){
-			if(mb_strpos($name."\x00\x00\x00\x00".$location."\x00\x00\x00\x00".$bio, $term) !== false){
-				return true;
-			}
-		}
-
 		foreach([$name, $bio, $location] as $str){
+
+			$str = mb_strtolower(str_replace(
+				['.', ',', '"', '\'', '-', '/', '\\'],
+				[' ', ' ',  '',   '', ' ', ' ',  ' '],
+				$str
+			));
+
+			foreach($this->any as $term){
+				if(mb_strpos($str, $term) !== false){
+					return true;
+				}
+			}
 
 			foreach($this->all as $arr){
 				$check = [];
@@ -426,39 +561,56 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 	/**
 	 * fetches a list of IDs from the given endpoint
 	 */
-	protected function getIDs(string $endpointMethod, array $params, bool $enforceLimit = null):array{
+	protected function getIDs(string $endpointMethod, array $params, bool $enforceLimit = null, bool $insert = null):array{
 
 		$endpoints = [
 			'blocksIds'             => 61, // user/app 15/900s
 			'followersIds'          => 61,
+			'friendsIds'            => 61,
 			'statusesRetweetersIds' => 3, // app, user: 12
 		];
 
 		if(!array_key_exists($endpointMethod, $endpoints)){
-			throw new InvalidArgumentException('invalid endpoint');
+			throw new InvalidArgumentException(sprintf('invalid endpoint "%s"', $endpointMethod));
 		}
 
 		// use app auth on certain endpoints for improved request limits
 		$client = in_array($endpointMethod, ['statusesRetweetersIds']) ? 'twitterCC' : 'twitter';
-		$params = array_merge(['cursor' => -1, 'stringify_ids' => 'true'], $params);
+		$params = array_merge(['cursor' => -1, 'stringify_ids' => 'false'], $params);
 		$ids    = [];
 
 		while(true){
-			$response = $this->{$client}->{$endpointMethod}($params);
 
-			if($response->getStatusCode() === 429 || $response->getHeaderLine('x-rate-limit-remaining') === '0'){
+			try{
+				$response = $this->{$client}->{$endpointMethod}($params);
+			}
+			catch(Throwable $e){
+				$this->logger->error(sprintf('http client error: %s', $e->getMessage()));
+
+				continue;
+			}
+
+			$status = $response->getStatusCode();
+
+			if($status === 429){
 				$this->sleepOn429($response);
 
 				continue;
 			}
-			elseif($response->getStatusCode() !== 200){
+			elseif($status !== 200){
+				$this->logger->error(sprintf('response error: HTTP/%s %s', $status, $response->getReasonPhrase()));
+
 				break;
 			}
 
 			$json = get_json($response);
 
-			if(isset($json->ids)){
-				$ids = array_merge($ids, $json->ids);
+			if(isset($json->ids) && !empty($json->ids)){
+				$ids = array_merge($ids, array_map('intval', $json->ids));
+
+				if($insert){
+					$this->addIDs($json->ids);
+				}
 			}
 
 			if(empty($json->next_cursor_str)){
@@ -476,39 +628,73 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 	}
 
 	/**
-	 * fetches user profiles from the given list of IDs and runs the detector on them
+	 * fetches a single user profile from the given $profileURL and returns the user object
 	 *
-	 * @see https://developer.twitter.com/en/docs/twitter-api/v1/accounts-and-users/follow-search-get-users/api-reference/get-users-lookup
+	 * @see https://developer.twitter.com/en/docs/twitter-api/v1/accounts-and-users/follow-search-get-users/api-reference/get-users-show
 	 */
-	protected function getUserProfiles(array $ids):array{
-		$chunks = array_chunk($ids, 100);
-		$users  = [];
+	protected function getUserprofile(string $profileURL):?object{
+		[$screen_name,] = $this::parseTwitterURL($profileURL);
 
-		foreach($chunks as $chunk){
+		if(empty($screen_name)){
+			throw new InvalidArgumentException('no screen_name given');
+		}
 
-			$params = [
-				'user_id'          => implode(',', $chunk),
-				'include_entities' => 'false',
-			];
+		while(true){
 
-			$response = $this->twitter->usersLookup($params);
-
-			usleep(1100000); // sleep for 1.1 seconds (900requests/15min)
-
-			if($response->getStatusCode() === 429 || $response->getHeaderLine('x-rate-limit-remaining') === '0'){
-				$this->sleepOn429($response);
+			try{
+				$response = $this->twitter->usersShow(['screen_name' => $screen_name, 'include_entities' => 'false']);
+			}
+			catch(Throwable $e){
+				$this->logger->error(sprintf('http client error: %s', $e->getMessage()));
 
 				continue;
 			}
-			elseif($response->getStatusCode() !== 200){
-				continue; // i don't care
-			}
 
-			$users = array_merge($users, get_json($response));
+			$status = $response->getStatusCode();
+
+			if($status === 200){
+				return get_json($response);
+			}
+			elseif($status === 404){
+				$this->logger->error(sprintf('user not found: "%s"', $screen_name));
+
+				break;
+			}
+			elseif($status === 429){
+				$this->sleepOn429($response);
+			}
+			else{
+				$this->logger->error(sprintf('response error: HTTP/%s %s', $status, $response->getReasonPhrase()));
+
+				break;
+			}
 
 		}
 
-		return $users;
+		return null;
+	}
+
+	/**
+	 * feches the block list and runs the blocker for the currently authenticated user
+	 */
+	public function block():TERFBLOCKER5000{
+
+		$result = $this->db->select
+			->cols(['profiles.id', 'profiles.screen_name'])
+			->from([
+				'profiles'  => $this->options->table_profiles,
+				'blocklist' => $this->options->table_blocklist,
+			])
+			->where('profiles.id', 'blocklist.id', '=', false)
+			->where('profiles.screen_name', ['[NOT_FOUND]', '[SUSPENDED]'], 'NOT IN')
+			->query()
+		;
+
+		if($result instanceof ResultInterface && $result->count() > 0){
+			$this->performBlock($result->__toArray());
+		}
+
+		return $this;
 	}
 
 	/**
@@ -522,43 +708,57 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 			throw new InvalidArgumentException('blocklist is empty');
 		}
 
-		$blocklist = array_values($blocklist);
+		$blockedIDs = $this->getIDs('blocksIds', []);
+		$blocklist  = array_values($blocklist);
+
+		$this->logger->info(sprintf('blocked users: %d, blocklist: %d', count($blockedIDs), count($blocklist)));
 
 		while(!empty($blocklist)){
 			$user          = array_shift($blocklist);
 			$user['retry'] = 0;
 
-			if(!isset($user['screen_name']) || !isset($user['id'])){
+			if(in_array($user['id'], $blockedIDs, true)){
 				continue;
 			}
 
 			$params = [
-				'screen_name'      => $user['screen_name'] ?? null,
+#				'screen_name'      => $user['screen_name'] ?? null,
 				'user_id'          => $user['id'] ?? null,
 				'include_entities' => 'false',
 				'skip_status'      => 'true',
 			];
 
-			$response = $this->twitter->block($params);
+			try{
+				$response = $this->twitter->block($params);
 
-			usleep(250000); // v1 API docs say the block endpoint has a limit, but apparently it doesn't :)
-#			sleep(20); // v2: 50requests/15min - for serious, twitter??? (hope the same as v1)
-
-			if($response->getStatusCode() === 429 || $response->getHeaderLine('x-rate-limit-remaining') === '0'){
-				$this->sleepOn429($response);
+				usleep(250000); // v1 API docs say the block endpoint has a limit, but apparently it doesn't :)
 			}
-			elseif($response->getStatusCode() !== 200){
+			catch(Throwable $e){
+				$this->logger->error(sprintf('http client error: %s', $e->getMessage()));
+
+				continue;
+			}
+
+			$status = $response->getStatusCode();
+
+			if($status === 429){
+				$this->sleepOn429($response);
+
+				continue;
+			}
+			elseif($status !== 200){
 				$user['retry']++;
 
 				if($user['retry'] < 3){
 					$blocklist[] = $user;
 				}
 
+				$this->logger->info(sprintf('retry #%s: %s [%s]', $user['retry'], $user['screen_name'], $user['id']));
+
+				continue;
 			}
 
-			// since the API doesn't reurn a success, just the user object (which contains "muting" but not "blocked")
-			// there's no point in doing anything with the response...
-
+			$this->logger->info(sprintf('blocked: %s [%s]', $user['screen_name'], $user['id']));
 		}
 
 	}
@@ -577,29 +777,246 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 			return;
 		}
 
-		sleep($reset - $now + 3);
+		$sleep = $reset - $now + 5;
+
+		$this->logger->info(sprintf('HTTP/429 - going to sleep for %d seconds', $sleep));
+
+		sleep($sleep);
 	}
 
 	/**
-	 * minifies the user objects and saves the data to the given file
+	 * adds/inserts an array of IDs to the profile table
 	 */
-	protected function saveToJson(array $users, string $filename):void{
-		$data = [];
+	protected function addIDs(array $ids):void{
 
-		foreach($users as $user){
-			$data[] = [
-				'screen_name'     => $user->screen_name,
-				'id'              => $user->id,
-				'name'            => preg_replace('/\s\s+/', ' ', $user->name),
-				'description'     => preg_replace('/\s\s+/', ' ', $user->description),
-				'location'        => $user->location,
-				'followers_count' => $user->followers_count,
-				'created_at'      => $user->created_at,
-			];
+		if(empty($ids)){
+			return;
 		}
 
-		$data = str_replace('    ', "\t", json_encode($data, JSON_BIGINT_AS_STRING | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT));
-		file_put_contents($filename, $data);
+		$this->logger->info(sprintf('added: %d IDs', count($ids)));
+
+		$this->db->insert
+			->into($this->options->table_profiles, 'IGNORE', 'id')
+			->values([['id' => '?']])
+			->callback($ids, fn($v):array => [(int)$v]);
+	}
+
+	// cron methods
+
+	/**
+	 * Adds a list of screen names to the background scan jobs table (not to confuse with fromScreenNames()!)
+	 */
+	public function cronAddScreenNames(array $screen_names):TERFBLOCKER5000{
+		$values = [];
+
+		foreach(array_unique($screen_names) as $screen_name){
+			[$screen_name,] = $this::parseTwitterURL('twitter.com/'.$screen_name);
+
+			if($screen_name === null){
+				continue;
+			}
+
+			$values[] = ['screen_name' => $screen_name, 'finished' => 0];
+		}
+
+		if(empty($values)){
+			$this->logger->info('empty list of screen_names');
+
+			return $this;
+		}
+
+		$this->db->insert
+			->into($this->options->table_scan_jobs, 'IGNORE', 'screen_name')
+			->values($values)
+			->multi();
+
+		return $this;
+	}
+
+	/**
+	 * Fetches the follower- and following ids for each screen name in the scan jobs table and stores them in the profile table.
+	 */
+	public function cronScanFollow():void{
+
+		$result = $this->db->select
+			->from([$this->options->table_scan_jobs])
+			->where('finished', 0)
+			->limit(1) // select count outside
+			->query();
+
+		if(!$result instanceof ResultInterface || $result->count() === 0){
+			$this->logger->error('invalid db query result/EOF');
+
+			return;
+		}
+
+		$result->__each(function(ResultRow $row){
+
+			try{
+
+				foreach(['followersIds', 'friendsIds'] as $endpoint){
+					$this->logger->info(sprintf('scanning: %s (%s)', $row->screen_name, $endpoint));
+
+					$this->getIDs($endpoint, ['screen_name' => $row->screen_name], true, true);
+				}
+			}
+			catch(Throwable $e){
+				$this->logger->error(sprintf('%s: %s', $row->screen_name, $e->getMessage()));
+
+				return;
+			}
+
+			$this->db->update
+				->table($this->options->table_scan_jobs)
+				->set(['finished' => 1])
+				->where('screen_name', $row->screen_name)
+				->query();
+		});
+	}
+
+	/**
+	 * Fetches up to 100 user profiles and updates the profile table with that data.
+	 * Profiles will be scanned during the update and suspect IDs will be added to the block list.
+	 *
+	 * @see https://developer.twitter.com/en/docs/twitter-api/v1/accounts-and-users/follow-search-get-users/api-reference/get-users-lookup
+	 * @see https://developer.twitter.com/en/docs/twitter-api/v1/data-dictionary/object-model/user
+	 */
+	public function cronFetchProfiles():void{
+
+		// select up to 100 freshly inserted rows from the profile table
+		$result = $this->db->select
+			->cols(['id'])
+			->from([$this->options->table_profiles])
+			->where('screen_name', null, 'IS', false)
+			->limit(100) // API limit
+			->query();
+
+		if(!$result instanceof ResultInterface || $result->count() === 0){
+			$this->logger->error('invalid db query result/EOF');
+
+			return;
+		}
+
+		// save the IDs that are passed in the request
+		$ids = array_column($result->__toArray(), 'id');
+
+		try{
+			$response = $this->twitter->usersLookup(['user_id' => implode(',', $ids), 'include_entities' => 'false']);
+		}
+		catch(Throwable $e){
+			$this->logger->error(sprintf('http client error: %s', $e->getMessage()));
+
+			return;
+		}
+
+		$status = $response->getStatusCode();
+
+		// a 404 means that none of the requested IDs could be found
+		if($status === 404){
+
+			$this->db->update
+				->table($this->options->table_profiles)
+				->set(['screen_name' => '[NOT_FOUND]'])
+				->where('id', $ids, 'IN')
+				->query();
+
+			$this->logger->info(sprintf('invalid IDs: %s', implode(', ', $ids)));
+
+			return;
+		}
+		// if we hit the request limit, go to sleep for a while
+		elseif($status === 429){
+			$this->sleepOn429($response);
+
+			return;
+		}
+		// if the request fails for some reason, we'll just retry next time
+		elseif($status !== 200){
+			$this->logger->error(sprintf('HTTP/%s %s', $status, $response->getReasonPhrase()));
+
+			return;
+		}
+
+		$users = get_json($response);
+
+		if(!is_array($users) || empty($users)){
+			$this->logger->info('response does not contain user data');
+
+			return;
+		}
+
+		// diff the returned IDs against the requested ones
+		$returned = array_column($users, 'id');
+		$diff     = array_diff($ids, $returned);
+
+		// exclude failed IDs
+		if(!empty($diff)){
+
+			$this->db->update
+				->table($this->options->table_profiles)
+				->set(['screen_name' => '[NOT_FOUND]'])
+				->where('id', $diff, 'IN')
+				->query();
+
+			$this->logger->info(sprintf('invalid IDs: %s', implode(', ', $diff)));
+		}
+
+		$this->blockIDs = [];
+
+		// dump the result into the DB
+		$this->db->update
+			->table($this->options->table_profiles)
+			->set([
+				'screen_name'     => '?',
+				'name'            => '?',
+				'description'     => '?',
+				'location'        => '?',
+				'followers_count' => '?',
+				'friends_count'   => '?',
+				'created_at'      => '?',
+				'verified'        => '?',
+			], false)
+			->where('id', '?', '=', false)
+			// @see https://wiki.php.net/rfc/consistent_callables
+			->callback($users, Closure::fromCallable([$this, 'prepareUserValues']));
+
+#		$this->logger->info(sprintf('updated IDs: %s', implode(', ', array_column($users, 'id'))));
+
+		$this->addBlockIDs('block');
+	}
+
+	/**
+	 * SELECT `id` FROM `terfblocker5000_profiles` WHERE ( LOWER(`name`) LIKE ? OR LOWER(`description`) LIKE ? OR LOWER(`location`) LIKE ? ) AND `id` NOT IN(SELECT `id` FROM `terfblocker5000_blocklist`)
+	 */
+	public function cronScanByWordlist():void{
+
+		foreach($this->any as $term){
+
+			$result = $this->db->select
+				->cols(['id'])
+				->from([$this->options->table_profiles])
+				->openBracket()
+				->where(['name', 'LOWER'], "%$term%", 'LIKE', true, 'OR')
+				->where(['description', 'LOWER'], "%$term%", 'LIKE', true, 'OR')
+				->where(['location', 'LOWER'], "%$term%", 'LIKE', true, 'OR')
+				->closeBracket()
+				->where('id', $this->db->select->cols(['id'])->from([$this->options->table_blocklist]), 'NOT IN')
+				->query();
+
+			if(!$result instanceof ResultInterface || $result->count() === 0){
+				$this->logger->info(sprintf('nothing found for "%s"', $term));
+
+				continue;
+			}
+
+			$this->logger->info(sprintf('%d accounts found for "%s"', $result->count(), $term));
+
+			$this->db->insert
+				->into($this->options->table_blocklist, 'IGNORE')
+				->values($result)
+				->multi();
+		}
+
 	}
 
 }

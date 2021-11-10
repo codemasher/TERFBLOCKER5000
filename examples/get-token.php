@@ -23,7 +23,7 @@
 use chillerlan\OAuth\Providers\Twitter\Twitter;
 use chillerlan\OAuth\Storage\SessionStorage;
 
-require_once __DIR__.'/common.php';
+require_once __DIR__.'/../cron/common.php';
 
 // use the session storage during authentication
 $storage = new SessionStorage($options);

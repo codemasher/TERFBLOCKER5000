@@ -22,7 +22,13 @@ use const SODIUM_CRYPTO_SECRETBOX_NONCEBYTES;
 /**
  * @property bool   $haltOnError
  * @property string $table_token
+ * @property string $table_scan_jobs
+ * @property string $table_profiles
+ * @property string $table_blocklist
+ * @property string $table_block_always
+ * @property string $table_block_never
  *
+ * @property int    $storageCacheTTL
  * @property bool   $storageEncryption
  * @property string $storageCryptoKey
  * @property string $storageCryptoNonce
@@ -30,9 +36,15 @@ use const SODIUM_CRYPTO_SECRETBOX_NONCEBYTES;
 class TERFBLOCKER5000Options extends OAuthOptions{
 	use DatabaseOptionsTrait;
 
-	protected bool   $haltOnError = true;
-	protected string $table_token = 'terfblocker5000_tokens';
+	protected bool   $haltOnError        = true;
+	protected string $table_token        = 'terfblocker5000_tokens';
+	protected string $table_scan_jobs    = 'terfblocker5000_scan_jobs';
+	protected string $table_profiles     = 'terfblocker5000_profiles';
+	protected string $table_blocklist    = 'terfblocker5000_blocklist';
+	protected string $table_block_always = 'terfblocker5000_block_always';
+	protected string $table_block_never  = 'terfblocker5000_block_never';
 
+	protected int    $storageCacheTTL    = 300;
 	protected bool   $storageEncryption  = true;
 	protected string $storageCryptoKey;
 	protected string $storageCryptoNonce = "\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18";

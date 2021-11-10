@@ -12,7 +12,7 @@
 		"ext-mysqli": "*",
 		"ext-sodium": "*",
 	    "psr/log": "^1.1 || ^2.0 || ^3.0",
-		"chillerlan/php-database": "dev-main#70c724739d4262b82522ce9644265510bc3d22cb",
+		"chillerlan/php-database": "dev-main#313a67d399602c2ee6ee3a8bace4340f4d719736",
 		"chillerlan/php-oauth-providers": "^2.0"
 	},
 	"require-dev": {

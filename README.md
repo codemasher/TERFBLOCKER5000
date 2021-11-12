@@ -5,11 +5,11 @@
 TERFs - Trans Exclusionary Radical "Feminists" - are a rather nasty, predominantly (but not limited to) british phenomenon,
 a [fascist](https://twitter.com/evan_greer/status/1435270525249626123) [trend](https://www.theguardian.com/us-news/commentisfree/2021/oct/23/judith-butler-gender-ideology-backlash) as Judith Butler called it.
 They pretend to "fight for the rights of woman and girls" but in reality they spread hate and misinformation about trans people.
-They come in different flavors from "concerned mother" to [outright terrorist](https://twitter.com/christapeterso/status/1455574098717913096) and - much like their alt-right buddies -
+They come in different flavors from "concerned mother" to [outright terrorist](https://twitter.com/christapeterso/status/1455574098717913096) and - much like their [alt-right buddies](https://rationalwiki.org/wiki/Alt-right_glossary) -
 they use a lot of [dog whistles](https://rationalwiki.org/wiki/TERF_glossary), which is where *TERFBLOCKER5000* steps in.
 
 *TERFBLOCKER5000* scans the user profiles (display name, bio and location) and filters them against a [word list](https://github.com/codemasher/TERFBLOCKER5000/blob/main/config/wordlist.php).
-Of course it's not perfect but it catches the vast majority of the most hateful accounts (~2% of the 1,8 million scanned accounts in the test environment - [get a taste of the vogon poetry](https://gist.github.com/codemasher/8e15e8238bd9e18230ff031a1e87ec8b)).
+Of course it's not perfect, but it catches the majority of the most hateful accounts (~2% of the 1,8 million scanned accounts in the test environment - [get a taste of the vogon poetry](https://gist.github.com/codemasher/8e15e8238bd9e18230ff031a1e87ec8b)).
 
 [![PHP Version Support][php-badge]][php]
 [![version][packagist-badge]][packagist]

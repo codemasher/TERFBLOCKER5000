@@ -22,7 +22,7 @@ return [
 	['🟩', '⬜️', '🟪'], // d83d dfe9, 2b1c fe0f, d83d dfea (squares)
 	['🟢', '⚪️', '🟣'], // d83d dfe2, 26aa fe0f, d83d dfe3 (circle)
 
-	// "superstraight" (orange/black)
+	// "superstraight" (black/orange)
 #	['🧡', '🖤'], // d83e dde1, d83d dda4 (hearts)
 	['🟧', '⬛️'], // d83d dfe7, 2b1b fe0f (squares)
 	['🟠', '⚫️'], // d83d dfe0, 26ab fe0f (circle)
@@ -30,8 +30,8 @@ return [
 	'💚🤍💜',
 	'🟢⚪️🟣',
 	'🟩⬜️🟪',
-	'🟧⬛️',
-	'🟠⚫️',
+	'⬛🟧️',
+	'⚫🟠️',
 	// words/terms
 	'GC Feminist',
 	'rad fem',
@@ -101,6 +101,21 @@ return [
 	'Gay not CIS',
 	'Lesbian Not Queer',
 	'Identifies as Attack Helicopter',
+	'Trans Identified',
+	'Sex based',
+	'Sex is real',
+	'They Call Me Terf',
+	'Terfragette',
+	'Erasing women',
+	'Lesbian erasure',
+	'Gender Woo Woo',
+	'Febfem',
+	'Troon',
+	'Straight pride',
+	'Drop The T',
+	'Drop The L',
+	'Drop The B',
+	'AFAB transwoman',
 
 	// "i stand with" - turns out that prefix is unnecessary...
 	'JKR',
@@ -147,10 +162,23 @@ return [
 	'Its OK To Be White',
 	'Save White Culture',
 	'Patriotic Alternative',
+	'White Lives Matter',
+	'white genocide',
+	'white guilt',
+	'white sharia',
+	'Trump wave',
+	'Cultural Marxism',
+	'Pure Blood',
+	'Ammosexual',
+	'globohomo',
+	'Kekistan',
+	'Traditional Wife',
+	'TradWife',
 
 	// may cause false positives
 #	'GC', // too ambiguous
 #	'TERF', // too ambiguous
+#	'RWDS', // too ambiguous
 #	'Love Trump', // -> "love trumps hate"
 #	'Republican', // -> "former/ex republican", "Republicans are awful"
 #	'Trump Supporter', // -> "former trump supporter"

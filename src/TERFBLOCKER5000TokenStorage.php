@@ -31,7 +31,7 @@ use function strtolower;
 class TERFBLOCKER5000TokenStorage extends OAuthStorageAbstract{
 
 	protected Database $db;
-	protected string $userID     = '';
+	protected int    $userID     = -1;
 	protected string $screenName = '';
 
 	/**
@@ -68,6 +68,20 @@ class TERFBLOCKER5000TokenStorage extends OAuthStorageAbstract{
 		$this->screenName = $screenName;
 
 		return $this;
+	}
+
+	/**
+	 *
+	 */
+	public function getUserID():int{
+		return $this->userID;
+	}
+
+	/**
+	 *
+	 */
+	public function getScreenName():string{
+		return $this->screenName;
 	}
 
 	/**
@@ -131,7 +145,7 @@ class TERFBLOCKER5000TokenStorage extends OAuthStorageAbstract{
 			->limit(1)
 			->query();
 
-		if(is_bool($r) || $r->length < 1){
+		if(is_bool($r) || $r->count() < 1){
 			throw new OAuthStorageException('token not found');
 		}
 

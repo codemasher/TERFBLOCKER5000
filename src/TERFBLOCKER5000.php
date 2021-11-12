@@ -10,9 +10,10 @@
 
 namespace codemasher\TERFBLOCKER5000;
 
-use chillerlan\Database\{Database, ResultInterface, ResultRow};
+use chillerlan\Database\{Database, ResultRow};
 use chillerlan\HTTP\Utils\Query;
 use chillerlan\OAuth\Core\AccessToken;
+use Exception;
 use chillerlan\OAuth\Providers\Twitter\{Twitter, TwitterCC};
 use chillerlan\OAuth\Storage\MemoryStorage;
 use chillerlan\Settings\SettingsContainerInterface;
@@ -22,25 +23,26 @@ use Psr\Log\{LoggerAwareInterface, LoggerAwareTrait, LoggerInterface, NullLogger
 use Closure, InvalidArgumentException, RuntimeException, Throwable;
 
 use function chillerlan\HTTP\Utils\get_json;
-use function array_column, array_diff, array_key_exists, array_merge, array_unique, array_values, count,
-	file_get_contents, implode, in_array, is_array, is_file, is_numeric, is_readable, is_string,
-	json_decode, mb_strpos, mb_strtolower, preg_match, preg_replace, realpath, sleep, sprintf,
-	str_replace, strtolower, strtotime, time, trim, usleep;
+use function array_column, array_diff, array_key_exists, array_merge, array_unique, array_values, count, date,
+	file_exists, file_get_contents, file_put_contents, implode, in_array, is_array, is_dir, is_file, is_numeric,
+	is_readable, is_string, is_writable, json_encode, json_decode, mb_strpos, mb_strtolower, preg_match,
+	preg_replace, realpath, rtrim, sleep, sprintf, str_replace, strtolower, strtotime, time, trim, usleep;
 
-use const JSON_THROW_ON_ERROR;
+use const DIRECTORY_SEPARATOR, JSON_BIGINT_AS_STRING, JSON_PRETTY_PRINT, JSON_THROW_ON_ERROR, JSON_UNESCAPED_SLASHES;
 
 class TERFBLOCKER5000 implements LoggerAwareInterface{
 	use LoggerAwareTrait;
 
 	/** @var \codemasher\TERFBLOCKER5000\TERFBLOCKER5000Options */
-	protected SettingsContainerInterface $options;
-	protected ClientInterface            $http;
-	protected Database                   $db;
-	protected Twitter                    $twitter;
-	protected TwitterCC                  $twitterCC;
-	protected array                      $any      = [];
-	protected array                      $all      = [];
-	protected array                      $blockIDs = []; // needs to be reset before calling prepareUserValues()
+	protected SettingsContainerInterface  $options;
+	protected ClientInterface             $http;
+	protected Database                    $db;
+	protected TERFBLOCKER5000TokenStorage $storage;
+	protected Twitter                     $twitter;
+	protected TwitterCC                   $twitterCC;
+	protected array                       $any      = [];
+	protected array                       $all      = [];
+	protected array                       $blockIDs = []; // needs to be reset before calling prepareUserValues()
 
 	/**
 	 * TERFBLOCKER5000 Constructor
@@ -73,11 +75,11 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 			throw new InvalidArgumentException('invalid token');
 		}
 
-		$storage = new TERFBLOCKER5000TokenStorage($this->db, $this->options, $this->logger);
-		$storage->setUserID($user->id, $user->screen_name);
+		$this->storage = new TERFBLOCKER5000TokenStorage($this->db, $this->options, $this->logger);
+		$this->storage->setUserID($user->id, $user->screen_name);
 		// store the token and switch to db storage
-		$storage->storeAccessToken($this->twitter->serviceName, $token);
-		$this->twitter->setStorage($storage);
+		$this->storage->storeAccessToken($this->twitter->serviceName, $token);
+		$this->twitter->setStorage($this->storage);
 
 		return $this;
 	}
@@ -86,14 +88,14 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 	 * Set the token from an existing user
 	 */
 	public function setTokenFromScreenName(string $screen_name):TERFBLOCKER5000{
-		$storage = new TERFBLOCKER5000TokenStorage($this->db, $this->options, $this->logger);
-		$storage->setUserFromScreenName($screen_name);
+		$this->storage = new TERFBLOCKER5000TokenStorage($this->db, $this->options, $this->logger);
+		$this->storage->setUserFromScreenName($screen_name);
 
-		if(!$this->verifyToken($storage->getAccessToken($this->twitter->serviceName))){
+		if(!$this->verifyToken($this->storage->getAccessToken($this->twitter->serviceName))){
 			throw new InvalidArgumentException('invalid token');
 		}
 
-		$this->twitter->setStorage($storage);
+		$this->twitter->setStorage($this->storage);
 
 		return $this;
 	}
@@ -319,9 +321,142 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 			$this->logger->info(sprintf('added: %s', $screen_name));
 		}
 
-		$this->addBlockIDs($blocktype);
+		$this->addBlockIDs($blocktype ?? 'block');
 
 		return $this;
+	}
+
+	/**
+	 * Fetches all users of a given (private) list from the currently authenticated usr's account, puts them in the profile table
+	 * and runs the given block action (always, block, never) on them.
+	 */
+	public function fromList(string $listName = null, string $blocktype = null):TERFBLOCKER5000{
+		$listName ??= 'TERFBLOCKER5000';
+		$list       = $this->fetchList($listName);
+
+		if($list === null){
+			throw new Exception(sprintf('cannot find specified list "%s"', $listName));
+		}
+
+		$params = [
+			'list_id'           => $list->id,
+			'user_id'           => $this->storage->getUserID(),
+			'include_entities'  => 'false',
+			'skip_status'       => 'true',
+			'count'             => 100,
+			'cursor'            => -1,
+		];
+
+		while(true){
+
+			try{
+				$response = $this->twitter->listsMembers($params);
+			}
+			catch(Throwable $e){
+				$this->logger->error(sprintf('http client error: %s', $e->getMessage()));
+
+				continue;
+			}
+
+			$status = $response->getStatusCode();
+
+			if($status === 429){
+				$this->sleepOn429($response);
+
+				continue;
+			}
+			elseif($status !== 200){
+				$this->logger->error(sprintf('response error: HTTP/%s %s', $status, $response->getReasonPhrase()));
+
+				break;
+			}
+
+			$json = get_json($response);
+
+			if(isset($json->users) && !empty($json->users)){
+				$this->blockIDs = [];
+				$users          = [];
+
+				foreach($json->users as $user){
+
+					if($blocktype !== 'never'){
+						$this->blockIDs[$user->id] = ['id' => $user->id];
+					}
+
+					$users[] = $this->prepareUserValues($user);
+
+					$this->logger->info(sprintf('added: %s', $user->screen_name));
+				}
+
+				if(!empty($users)){
+					$this->db->insert
+						->into($this->options->table_profiles, 'REPLACE', 'id')
+						->values($users)
+						->multi();
+
+					$this->addBlockIDs($blocktype ?? 'block');
+				}
+			}
+
+			if(empty($json->next_cursor_str)){
+				break;
+			}
+
+			$params['cursor'] = $json->next_cursor_str;
+		}
+
+		return $this;
+	}
+
+	/**
+	 *
+	 */
+	protected function fetchList(string $listName):?object{
+
+		while(true){
+
+			try{
+				$response = $this->twitter->lists([
+					'user_id' => $this->storage->getUserID(),
+					'reverse' => 'true',
+				]);
+			}
+			catch(Throwable $e){
+				$this->logger->error(sprintf('http client error: %s', $e->getMessage()));
+
+				continue;
+			}
+
+			$status = $response->getStatusCode();
+
+			if($status === 200){
+				$json = get_json($response);
+
+				if(!is_array($json) || empty($json)){
+					break;
+				}
+
+				foreach($json as $list){
+					// skip public lists
+					if(strtolower($list->name) === strtolower($listName) && $list->mode === 'private'){
+						return $list;
+					}
+				}
+
+				break;
+			}
+			elseif($status === 429){
+				$this->sleepOn429($response);
+			}
+			else{
+				$this->logger->error(sprintf('response error: HTTP/%s %s', $status, $response->getReasonPhrase()));
+
+				break;
+			}
+
+		}
+
+		return null;
 	}
 
 	/**
@@ -349,6 +484,37 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 		}
 
 		$this->addIDs($ids);
+
+		return $this;
+	}
+
+	/**
+	 * Exports the block list to a human readable JSON file in the given $path
+	 */
+	public function exportBlocklist(string $path):TERFBLOCKER5000{
+		$path = realpath(rtrim($path, '\\/')).DIRECTORY_SEPARATOR;
+
+		if(!file_exists($path) || !is_dir($path) || !is_writable($path)){
+			throw new InvalidArgumentException('invalid path given');
+		}
+
+		$result = $this->db->select
+			->cols([
+				'blocklist.id',
+				'profile.screen_name',
+				'profile.name',
+				'profile.description',
+				'profile.location',
+			])
+			->from([
+				'blocklist' => $this->options->table_blocklist,
+				'profile'   => $this->options->table_profiles,
+			])
+			->where('blocklist.id', 'profile.id', '=', false)
+			->query();
+
+		$data = str_replace('    ', "\t", json_encode($result, JSON_BIGINT_AS_STRING | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT));
+		file_put_contents(sprintf('%sblocklist-%s.json', $path, date('Y.m.d-H.i.s')), $data);
 
 		return $this;
 	}
@@ -398,7 +564,15 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 	protected function getUsersFromV1SearchTweets(array $params, string $statusID = null, $blocktype = null, bool $enforceLimit = null):void{
 
 		while(true){
-			$response = $this->twitterCC->searchTweets($params);
+
+			try{
+				$response = $this->twitterCC->searchTweets($params);
+			}
+			catch(Throwable $e){
+				$this->logger->error(sprintf('http client error: %s', $e->getMessage()));
+
+				continue;
+			}
 
 			$status = $response->getStatusCode();
 
@@ -429,12 +603,16 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 				$values[$tweet->user->id_str] = $this->prepareUserValues($tweet->user);
 			}
 
-			$this->db->insert
-				->into($this->options->table_profiles, 'REPLACE', 'id')
-				->values(array_values($values))
-				->multi();
+			if(!empty($values)){
+				$this->logger->info(sprintf('%s profiles, %s filtered', count($values), count($this->blockIDs)));
 
-			$this->addBlockIDs($blocktype);
+				$this->db->insert
+					->into($this->options->table_profiles, 'REPLACE', 'id')
+					->values(array_values($values))
+					->multi();
+
+				$this->addBlockIDs($blocktype ?? 'block');
+			}
 
 			if(!isset($json->search_metadata, $json->search_metadata->next_results) || empty($json->search_metadata->next_results)){
 				break;
@@ -486,6 +664,12 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 	protected function addBlockIDs(string $blocktype):void{
 		$blocktype = strtolower(trim($blocktype));
 
+		if(empty($this->blockIDs)){
+			$this->logger->info('blockIDs empty, nothing to add');
+
+			return;
+		}
+
 		if(!in_array($blocktype, ['always', 'block', 'never']) || empty($this->blockIDs)){
 			return;
 		}
@@ -528,8 +712,8 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 		foreach([$name, $bio, $location] as $str){
 
 			$str = mb_strtolower(str_replace(
-				['.', ',', '"', '\'', '-', '/', '\\'],
-				[' ', ' ',  '',   '', ' ', ' ',  ' '],
+				['.', ',', '"', '\'', '-', '/', '\\', '•'],
+				[' ', ' ',  '',   '', ' ', ' ',  ' ', ' '],
 				$str
 			));
 
@@ -613,7 +797,7 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 				}
 			}
 
-			if(empty($json->next_cursor_str)){
+			if(!isset($json->next_cursor_str) || empty($json->next_cursor_str)){
 				break;
 			}
 
@@ -690,8 +874,8 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 			->query()
 		;
 
-		if($result instanceof ResultInterface && $result->count() > 0){
-			$this->performBlock($result->__toArray());
+		if($result->count() > 0){
+			$this->performBlock($result->toArray());
 		}
 
 		return $this;
@@ -710,12 +894,16 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 
 		$blockedIDs = $this->getIDs('blocksIds', []);
 		$blocklist  = array_values($blocklist);
+		$counter    = 0;
 
-		$this->logger->info(sprintf('blocked users: %d, blocklist: %d', count($blockedIDs), count($blocklist)));
+		$this->logger->info(sprintf('currently blocked users: %d, blocklist: %d', count($blockedIDs), count($blocklist)));
 
 		while(!empty($blocklist)){
-			$user          = array_shift($blocklist);
-			$user['retry'] = 0;
+			$user = array_shift($blocklist);
+
+			if(!isset($user['retry'])){
+				$user['retry'] = 0;
+			}
 
 			if(in_array($user['id'], $blockedIDs, true)){
 				continue;
@@ -741,26 +929,43 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 
 			$status = $response->getStatusCode();
 
-			if($status === 429){
-				$this->sleepOn429($response);
+			if($status === 200){
+				$counter++;
 
-				continue;
+				$this->logger->info(sprintf('blocked: %s [%s]', $user['screen_name'], $user['id']));
 			}
-			elseif($status !== 200){
-				$user['retry']++;
+			elseif($status === 429){
+				$this->sleepOn429($response);
+			}
+			else{
 
 				if($user['retry'] < 3){
+					$user['retry']++;
 					$blocklist[] = $user;
+
+					$this->logger->info(sprintf('retry #%s: %s [%s]', $user['retry'], $user['screen_name'], $user['id']));
+
+					continue;
 				}
 
-				$this->logger->info(sprintf('retry #%s: %s [%s]', $user['retry'], $user['screen_name'], $user['id']));
+				$this->db->update
+					->table($this->options->table_profiles)
+					->set(['screen_name' => '[NOT_FOUND]'])
+					->where('id', $user['id'])
+					->query();
 
-				continue;
+				// something something foreign keys...
+				$this->db->delete
+					->from($this->options->table_blocklist)
+					->where('id', $user['id'])
+					->query();
+
+				break;
 			}
 
-			$this->logger->info(sprintf('blocked: %s [%s]', $user['screen_name'], $user['id']));
 		}
 
+		$this->logger->info(sprintf('blocked users in this run: %d', $counter));
 	}
 
 	/**
@@ -844,13 +1049,13 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 			->limit(1) // select count outside
 			->query();
 
-		if(!$result instanceof ResultInterface || $result->count() === 0){
+		if($result->count() === 0){
 			$this->logger->error('invalid db query result/EOF');
 
 			return;
 		}
 
-		$result->__each(function(ResultRow $row){
+		$result->each(function(ResultRow $row){
 
 			try{
 
@@ -891,14 +1096,14 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 			->limit(100) // API limit
 			->query();
 
-		if(!$result instanceof ResultInterface || $result->count() === 0){
+		if($result->count() === 0){
 			$this->logger->error('invalid db query result/EOF');
 
 			return;
 		}
 
 		// save the IDs that are passed in the request
-		$ids = array_column($result->__toArray(), 'id');
+		$ids = array_column($result->toArray(), 'id');
 
 		try{
 			$response = $this->twitter->usersLookup(['user_id' => implode(',', $ids), 'include_entities' => 'false']);
@@ -1003,7 +1208,7 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 				->where('id', $this->db->select->cols(['id'])->from([$this->options->table_blocklist]), 'NOT IN')
 				->query();
 
-			if(!$result instanceof ResultInterface || $result->count() === 0){
+			if($result->count() === 0){
 				$this->logger->info(sprintf('nothing found for "%s"', $term));
 
 				continue;

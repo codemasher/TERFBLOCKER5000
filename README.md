@@ -57,3 +57,7 @@ $terfblocker
 	->block()
 ;
 ```
+
+<p align="center">
+	<img alt="QR codes are awesome!" src="./.github/images/blocked.png">
+</p>

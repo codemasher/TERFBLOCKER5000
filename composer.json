@@ -11,8 +11,8 @@
 		"ext-mbstring": "*",
 		"ext-mysqli": "*",
 		"ext-sodium": "*",
-	    "psr/log": "^1.1 || ^2.0 || ^3.0",
-		"chillerlan/php-database": "dev-main#313a67d399602c2ee6ee3a8bace4340f4d719736",
+		"psr/log": "^1.1 || ^2.0 || ^3.0",
+		"chillerlan/php-database": "dev-main#e17d80b2611c7e0a2c39cd578848eb50d9bc5838",
 		"chillerlan/php-oauth-providers": "^2.0"
 	},
 	"require-dev": {

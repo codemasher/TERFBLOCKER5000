@@ -26,8 +26,8 @@ Of course it's not perfect, but it catches the majority of the most hateful acco
 <!-- WIP -->
 ```php
 // @see https://github.com/chillerlan/php-oauth-providers/blob/main/examples/get-token/Twitter.php
-$token    = (new AccessToken)->fromJSON(file_get_contents(CFGDIR.'/Twitter.token.json'));
-$wordlist = require CFGDIR.'/wordlist.php';
+$token    = (new AccessToken)->fromJSON(file_get_contents($CFGDIR.'/Twitter.token.json'));
+$wordlist = require $CFGDIR.'/wordlist.php';
 
 $terfblocker
 	// import a new twitter oauth token if needed
@@ -46,16 +46,44 @@ $terfblocker
 	->fromFollowers('https://twitter.com/HJoyceGender', true)
 	// from the accounts the given account follows
 	->fromFollowing('https://twitter.com/HJoyceGender', true)
-	// from followers AND following from a list of screen names
+	// from followers AND following from a list of screen names ()
 	->fromFollowersAndFollowing(['ALLIANCELGB', 'Transgendertrd', 'fairplaywomen'], true)
+	// adds each of the given screen_names to the given block list (always, block, never)
+	->fromScreenNames(['ALLIANCELGB', 'Transgendertrd', 'fairplaywomen'], 'always')
 	// fetches the retweeters of the given tweet - note that the results of this endpoint
 	// may not return *all* but only the *recent* retweeters - whatever that means...
 	->fromRetweets('https://twitter.com/fairplaywomen/status/1388442839969931264')
+	// fetches all users of the given (private) list
+	->fromList('TERFBLOCKER5000', 'always')
+	// adds the user IDs from the block list of the currently authenticated user to the profile table
+	->fromBlocklist()
 	// add user IDs found in the given JSON file
 	->fromJSON(__DIR__.'/users.json')
-	// blocks all accounts from the database block list list
-	->block()
+	// exports the block list from the database into a JSON file in the given path
+	->exportBlocklist(__DIR__.'/../json/')
 ;
+
+/**
+ * cron methods
+ */
+ 
+$terfblocker
+	// adds a list of screen names to the "scan jobs" table
+	->cronAddScreenNames(['ALLIANCELGB', 'Transgendertrd', 'fairplaywomen'])
+	// scans followers/following for users in the scan jobs table, @see /cron/fetch_follow.php
+	->cronScanFollow();
+
+// the profile fetcher @see /cron/fetch_profiles.php
+$terfblocker->cronFetchProfiles();
+
+// rescans the profile table against the given wordlist
+$terfblocker
+	->setWordlist($wordlist)
+	->cronScanByWordlist();
+	
+// performs blocks for the currently authenticated user, @see /cron/perform_block.php
+$terfblocker->block();
+
 ```
 
 <p align="center">

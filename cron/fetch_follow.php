@@ -11,11 +11,11 @@
 
 /**
  * @var \codemasher\TERFBLOCKER5000\TERFBLOCKER5000 $terfblocker
- * @var \chillerlan\Database\Database $db
  * @var \codemasher\TERFBLOCKER5000\TERFBLOCKER5000Options $options
+ * @var \chillerlan\Database\Database $db
  * @var \Psr\Log\LoggerInterface $logger
  */
-require_once __DIR__.'/../cron/common.php';
+require_once __DIR__.'/common.php';
 
 $terfblocker->setTokenFromScreenName('TERFBLOCKER5000');
 

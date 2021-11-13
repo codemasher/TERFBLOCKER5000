@@ -797,7 +797,7 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 				}
 			}
 
-			if(!isset($json->next_cursor_str) || empty($json->next_cursor_str)){
+			if(empty($json->next_cursor_str)){
 				break;
 			}
 

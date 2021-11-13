@@ -25,7 +25,7 @@ use codemasher\TERFBLOCKER5000\TERFBLOCKER5000Options;
  * @var string $AUTOLOADER - path to an alternate autoloader
  * @var string $ENVFILE    - the name of the .env file in case it differs from the default
  * @var string $CFGDIR     - the directory where configuration is stored (.env, cacert, tokens)
- * @var string $LOGLEVEL   - log level for the test logger, use 'none' to suppress logging
+ * @var string $_LOGGER    - a PSR-3 logger instance
  */
 $ENVFILE  ??= '.env';
 $CFGDIR   ??= __DIR__.'/../config';
@@ -61,7 +61,7 @@ $options = new TERFBLOCKER5000Options([
 	'$storageCryptoNonce' => $env->DB_CRYPTO_NONCE,
 ]);
 
-$logger      = new OAuthTestLogger($LOGLEVEL); // PSR-3
+$logger      = $_LOGGER ?? new OAuthTestLogger($LOGLEVEL); // PSR-3
 $http        = new CurlClient($options, null, $logger); // PSR-18
 $db          = new Database($options, new MemoryCache, $logger);
 $terfblocker = new TERFBLOCKER5000($http, $db, $options, $logger);

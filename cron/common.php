@@ -12,8 +12,10 @@ use chillerlan\DotEnv\DotEnv;
 use chillerlan\HTTP\Psr18\CurlClient;
 use chillerlan\OAuthTest\OAuthTestLogger;
 use chillerlan\SimpleCache\MemoryCache;
+use codemasher\TERFBLOCKER5000\DatabaseLogger;
 use codemasher\TERFBLOCKER5000\TERFBLOCKER5000;
 use codemasher\TERFBLOCKER5000\TERFBLOCKER5000Options;
+use Psr\Log\LogLevel;
 
 // please for the love of the php goddess, disable error reporting on a public server
 #error_reporting(0);
@@ -59,9 +61,10 @@ $options = new TERFBLOCKER5000Options([
 	'storageEncryption'   => true,
 	'storageCryptoKey'    => $env->DB_CRYPTO_KEY,
 	'$storageCryptoNonce' => $env->DB_CRYPTO_NONCE,
+	'loglevel'            => LogLevel::ERROR,
 ]);
 
-$logger      = new OAuthTestLogger($LOGLEVEL); // PSR-3
+$db          = new Database($options, new MemoryCache);
+$logger      = new DatabaseLogger($options, $db); // PSR-3
 $http        = new CurlClient($options, null, $logger); // PSR-18
-$db          = new Database($options, new MemoryCache, $logger);
 $terfblocker = new TERFBLOCKER5000($http, $db, $options, $logger);

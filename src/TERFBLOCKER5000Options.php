@@ -28,6 +28,8 @@ use const SODIUM_CRYPTO_SECRETBOX_NONCEBYTES;
  * @property string $table_block_always
  * @property string $table_block_never
  *
+ * @property string $logTable
+ * @property string $loglevel
  * @property int    $storageCacheTTL
  * @property bool   $storageEncryption
  * @property string $storageCryptoKey
@@ -44,6 +46,8 @@ class TERFBLOCKER5000Options extends OAuthOptions{
 	protected string $table_block_always = 'terfblocker5000_block_always';
 	protected string $table_block_never  = 'terfblocker5000_block_never';
 
+	protected string $table_log          = 'terfblocker5000_log';
+	protected string $loglevel           = 'none';
 	protected int    $storageCacheTTL    = 300;
 	protected bool   $storageEncryption  = true;
 	protected string $storageCryptoKey;

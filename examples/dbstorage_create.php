@@ -14,6 +14,8 @@
  * @var \Psr\Log\LoggerInterface $logger
  */
 
+use Psr\Log\LogLevel;
+
 require_once __DIR__.'/../cron/common.php';
 
 $logger->info('creating dbstorage tables...');
@@ -21,10 +23,7 @@ $logger->info('creating dbstorage tables...');
 $db->connect();
 
 // token table
-$db->drop
-	->table($options->table_token)
-	->ifExists()
-	->query();
+#$db->drop->table($options->table_token)->ifExists()->query();
 
 $db->create
 	->table($options->table_token)
@@ -37,10 +36,7 @@ $db->create
 
 
 // to-scan table
-$db->drop
-	->table($options->table_scan_jobs)
-	->ifExists()
-	->query();
+#$db->drop->table($options->table_scan_jobs)->ifExists()->query();
 
 $db->create
 	->table($options->table_scan_jobs)
@@ -55,10 +51,7 @@ $db->raw(sprintf('ALTER TABLE `%s` ADD UNIQUE(`screen_name`);', $options->table_
 
 
 // profiles table
-$db->drop
-	->table($options->table_profiles)
-	->ifExists()
-	->query();
+#$db->drop->table($options->table_profiles)->ifExists()->query();
 
 $db->create
 	->table($options->table_profiles)
@@ -78,10 +71,7 @@ $db->create
 
 
 // block list
-$db->drop
-	->table($options->table_blocklist)
-	->ifExists()
-	->query();
+#$db->drop->table($options->table_blocklist)->ifExists()->query();
 
 $db->create
 	->table($options->table_blocklist)
@@ -92,11 +82,7 @@ $db->create
 
 
 // always block list
-$db->drop
-	->table($options->table_block_always)
-	->ifExists()
-	->query();
-
+#$db->drop->table($options->table_block_always)->ifExists()->query();
 
 $db->create
 	->table($options->table_block_always)
@@ -107,14 +93,35 @@ $db->create
 
 
 // never block list
-$db->drop
-	->table($options->table_block_never)
-	->ifExists()
-	->query();
+#$db->drop->table($options->table_block_never)->ifExists()->query();
 
 $db->create
 	->table($options->table_block_never)
 	->ifNotExists()
 	->primaryKey('id')
 	->bigint('id', 20)
+	->query();
+
+
+// error log
+#$db->drop->table($options->table_log)->ifExists()->query();
+
+$db->create
+	->table($options->table_log)
+	->ifNotExists()
+	->primaryKey('id')
+	->bigint('id', 20, null, false, 'UNSIGNED AUTO_INCREMENT')
+	->enum('level', [
+		LogLevel::DEBUG,
+		LogLevel::INFO,
+		LogLevel::NOTICE,
+		LogLevel::WARNING,
+		LogLevel::ERROR,
+		LogLevel::CRITICAL,
+		LogLevel::ALERT,
+		LogLevel::EMERGENCY,
+	])
+	->text('message', null, true)
+	->text('context', null, true)
+	->int('time', 10, null, false, 'UNSIGNED')
 	->query();

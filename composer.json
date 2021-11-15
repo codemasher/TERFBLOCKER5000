@@ -27,8 +27,7 @@
 	},
 	"autoload-dev": {
 		"psr-4": {
-			"codemasher\\TERFBLOCKER5000Tests\\": "tests",
-			"chillerlan\\OAuthTest\\": "vendor/chillerlan/php-oauth-core/tests"
+			"codemasher\\TERFBLOCKER5000Tests\\": "tests"
 		}
 	}
 }

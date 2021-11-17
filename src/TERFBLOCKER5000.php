@@ -303,7 +303,7 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 		$this->blockIDs = [];
 
 		foreach(array_unique($screen_names) as $screen_name){
-			$user = $this->getUserprofile('twitter.com/'.trim($screen_name));
+			$user = $this->getUserprofile($screen_name);
 
 			if($user === null){
 				continue;
@@ -313,12 +313,6 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 				$this->blockIDs[$user->id] = ['id' => $user->id];
 			}
 
-			$this->db->insert
-				->into($this->options->table_profiles, 'REPLACE', 'id')
-				->values($this->prepareUserValues($user))
-				->query();
-
-			$this->logger->info(sprintf('added: %s', $screen_name));
 		}
 
 		$this->addBlockIDs($blocktype ?? 'block');
@@ -632,12 +626,12 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 	 * @see https://developer.twitter.com/en/docs/twitter-api/v1/data-dictionary/object-model/user
 	 * @see https://developer.twitter.com/en/docs/twitter-api/data-dictionary/object-model/user
 	 */
-	protected function prepareUserValues(object $user):array{
+	protected function prepareUserValues(object $user, bool $match = true):array{
 		$name        = preg_replace('/\s\s+/', ' ', $user->name ?? '');
 		$description = preg_replace('/\s\s+/', ' ', $user->description ?? '');
 		$location    = preg_replace('/\s\s+/', ' ', $user->location ?? '');
 
-		if($this->match($name, $description, $location)){
+		if($match && $this->match($name, $description, $location)){
 			$this->blockIDs[$user->id] = ['id' => $user->id];
 		}
 
@@ -759,7 +753,7 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 		}
 
 		// use app auth on certain endpoints for improved request limits
-		$client = in_array($endpointMethod, ['statusesRetweetersIds']) ? 'twitterCC' : 'twitter';
+		$client = in_array($endpointMethod, ['statusesRetweetersIds'/*, 'followersIds', 'friendsIds'*/]) ? 'twitterCC' : 'twitter';
 		$params = array_merge(['cursor' => -1, 'stringify_ids' => 'false'], $params);
 		$ids    = [];
 
@@ -816,8 +810,7 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 	 *
 	 * @see https://developer.twitter.com/en/docs/twitter-api/v1/accounts-and-users/follow-search-get-users/api-reference/get-users-show
 	 */
-	protected function getUserprofile(string $profileURL):?object{
-		[$screen_name,] = $this::parseTwitterURL($profileURL);
+	protected function getUserprofile(string $screen_name):?object{
 
 		if(empty($screen_name)){
 			throw new InvalidArgumentException('no screen_name given');
@@ -837,7 +830,16 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 			$status = $response->getStatusCode();
 
 			if($status === 200){
-				return get_json($response);
+				$user = get_json($response);
+
+				$this->db->insert
+					->into($this->options->table_profiles, 'REPLACE', 'id')
+					->values($this->prepareUserValues($user, false))
+					->query();
+
+				$this->logger->info(sprintf('updated: %s', $screen_name));
+
+				return $user;
 			}
 			elseif($status === 404){
 				$this->logger->error(sprintf('user not found: "%s"', $screen_name));
@@ -1015,13 +1017,17 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 		$values = [];
 
 		foreach(array_unique($screen_names) as $screen_name){
-			[$screen_name,] = $this::parseTwitterURL('twitter.com/'.$screen_name);
+			$user = $this->getUserprofile($screen_name);
 
-			if($screen_name === null){
+			if($user === null){
 				continue;
 			}
 
-			$values[] = ['screen_name' => $screen_name, 'finished' => 0];
+			$values[] = [
+				'id'          => $user->id,
+				'screen_name' => $user->screen_name,
+				'finished'    => 0,
+			];
 		}
 
 		if(empty($values)){
@@ -1058,15 +1064,32 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 		$result->each(function(ResultRow $row){
 
 			try{
+				$user = $this->getUserprofile($row->screen_name);
+
+				if($user === null){
+					throw new Exception('user not found');
+				}
+
+				if($user->protected){
+					throw new Exception('user profile protected');
+				}
 
 				foreach(['followersIds', 'friendsIds'] as $endpoint){
 					$this->logger->info(sprintf('scanning: %s (%s)', $row->screen_name, $endpoint));
 
-					$this->getIDs($endpoint, ['screen_name' => $row->screen_name], true, true);
+					$this->getIDs($endpoint, ['user_id' => $row->id, 'screen_name' => $row->screen_name], true, true);
 				}
+
+				sleep(60);
 			}
 			catch(Throwable $e){
 				$this->logger->error(sprintf('%s: %s', $row->screen_name, $e->getMessage()));
+
+				$this->db->update
+					->table($this->options->table_scan_jobs)
+					->set(['finished' => 2])
+					->where('id', $row->id)
+					->query();
 
 				return;
 			}
@@ -1074,7 +1097,7 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 			$this->db->update
 				->table($this->options->table_scan_jobs)
 				->set(['finished' => 1])
-				->where('screen_name', $row->screen_name)
+				->where('id', $row->id)
 				->query();
 		});
 	}

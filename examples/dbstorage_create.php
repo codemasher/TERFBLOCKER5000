@@ -43,10 +43,12 @@ $db->create
 	->ifNotExists()
 	->primaryKey('scan_id')
 	->int('scan_id', 10, null, false, 'UNSIGNED AUTO_INCREMENT')
+	->bigint('id', 20)
 	->varchar('screen_name', 32, null, true)
 	->tinyint('finished', 1, 0, false, 'UNSIGNED')
 	->query();
 
+#$db->raw(sprintf('ALTER TABLE `%s` ADD UNIQUE(`id`);', $options->table_scan_jobs));
 $db->raw(sprintf('ALTER TABLE `%s` ADD UNIQUE(`screen_name`);', $options->table_scan_jobs));
 
 
@@ -69,6 +71,7 @@ $db->create
 	->field('updated', 'TIMESTAMP', null, 'ON UPDATE CURRENT_TIMESTAMP', null, null, 'CURRENT_TIMESTAMP')
 	->query();
 
+$db->raw(sprintf('ALTER TABLE `%s` ADD FULLTEXT(`description`);', $options->table_profiles));
 
 // block list
 #$db->drop->table($options->table_blocklist)->ifExists()->query();
@@ -106,22 +109,15 @@ $db->create
 // error log
 #$db->drop->table($options->table_log)->ifExists()->query();
 
-$db->create
+$this->db->create
 	->table($options->table_log)
 	->ifNotExists()
 	->primaryKey('id')
 	->bigint('id', 20, null, false, 'UNSIGNED AUTO_INCREMENT')
-	->enum('level', [
-		LogLevel::DEBUG,
-		LogLevel::INFO,
-		LogLevel::NOTICE,
-		LogLevel::WARNING,
-		LogLevel::ERROR,
-		LogLevel::CRITICAL,
-		LogLevel::ALERT,
-		LogLevel::EMERGENCY,
-	])
-	->text('message', null, true)
+	->tinytext('channel')
+	->enum('level_name', ['DEBUG', 'INFO', 'NOTICE', 'WARNING', 'ERROR', 'CRITICAL', 'ALERT', 'EMERGENCY'])
+	->text('message')
 	->text('context', null, true)
-	->int('time', 10, null, false, 'UNSIGNED')
+	->text('extra', null, true)
+	->int('datetime', 10, null, false, 'UNSIGNED')
 	->query();

@@ -6,15 +6,16 @@
  * @license      MIT
  */
 
-use chillerlan\Database\Database;
+use chillerlan\Database\{Database, MonologHandler};
 use chillerlan\Database\Drivers\MySQLiDrv;
 use chillerlan\DotEnv\DotEnv;
 use chillerlan\HTTP\Psr18\CurlClient;
-use chillerlan\OAuthTest\OAuthTestLogger;
 use chillerlan\SimpleCache\MemoryCache;
-use codemasher\TERFBLOCKER5000\DatabaseLogger;
 use codemasher\TERFBLOCKER5000\TERFBLOCKER5000;
 use codemasher\TERFBLOCKER5000\TERFBLOCKER5000Options;
+use Monolog\Formatter\LineFormatter;
+use Monolog\Handler\StreamHandler;
+use Monolog\Logger;
 use Psr\Log\LogLevel;
 
 // please for the love of the php goddess, disable error reporting on a public server
@@ -61,10 +62,18 @@ $options = new TERFBLOCKER5000Options([
 	'storageEncryption'   => true,
 	'storageCryptoKey'    => $env->DB_CRYPTO_KEY,
 	'$storageCryptoNonce' => $env->DB_CRYPTO_NONCE,
-	'loglevel'            => LogLevel::ERROR,
+	'loglevel'            => $LOGLEVEL,
 ]);
 
-$db          = new Database($options, new MemoryCache);
-$logger      = new DatabaseLogger($options, $db); // PSR-3
+// a log handler for STDOUT (or STDERR if you prefer)
+$logHandler  = (new StreamHandler('php://stdout', $options->loglevel))
+	->setFormatter((new LineFormatter(null, 'Y-m-d H:i:s', true, true))->setJsonPrettyPrint(true));
+// a logger instance
+$logger      = new Logger('log', [$logHandler]); // PSR-3
+// a db instance with a clone (!) of the logger instance - we don't want the DB logger here
+$db          = new Database($options, new MemoryCache, clone $logger);
+// add the DB logger
+$logger->pushHandler(new MonologHandler($db, $options->table_log, LogLevel::ERROR));
+// invoke the rest
 $http        = new CurlClient($options, null, $logger); // PSR-18
 $terfblocker = new TERFBLOCKER5000($http, $db, $options, $logger);

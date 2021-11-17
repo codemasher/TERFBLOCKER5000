@@ -116,6 +116,7 @@ return [
 	'Drop The L',
 	'Drop The B',
 	'AFAB transwoman',
+	'Fuck Your Pronouns',
 
 	// "i stand with" - turns out that prefix is unnecessary...
 	'JKR',

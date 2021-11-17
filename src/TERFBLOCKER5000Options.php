@@ -28,7 +28,7 @@ use const SODIUM_CRYPTO_SECRETBOX_NONCEBYTES;
  * @property string $table_block_always
  * @property string $table_block_never
  *
- * @property string $logTable
+ * @property string $table_log
  * @property string $loglevel
  * @property int    $storageCacheTTL
  * @property bool   $storageEncryption

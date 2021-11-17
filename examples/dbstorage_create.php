@@ -109,7 +109,7 @@ $db->create
 // error log
 #$db->drop->table($options->table_log)->ifExists()->query();
 
-$this->db->create
+$db->create
 	->table($options->table_log)
 	->ifNotExists()
 	->primaryKey('id')

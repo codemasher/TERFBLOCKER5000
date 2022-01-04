@@ -175,6 +175,7 @@ return [
 	'Kekistan',
 	'Traditional Wife',
 	'TradWife',
+	'unite the right',
 
 	// may cause false positives
 #	'GC', // too ambiguous
@@ -189,5 +190,32 @@ return [
 	'Gender free',
 	'No Thank You',
 
-	// detrans + lizard emoji??? 🦎
+	// crypto bros (because it's 2022 and i have no chill left anymore)
+	'web3',
+	'blockchain',
+	'bitcoin',
+	'ethereum',
+	'.eth',
+	'crypto art',
+	'DAOs',
+	'NFT advis',
+	'NFT art',
+	'NFT com',
+	'NFT collect',
+	'NFT creat',
+	'NFT expert',
+	'NFT music',
+	'NFT project',
+	'NFT tech',
+	'music NFT',
+	'opensea',
+	'women in crypto', // why??
+	'crypto twitter',
+
+	// may cause false positives?
+#	'crypto', // too ambiguous
+	'NFTs',
+	'BTC',
+#	'ETH',
+
 ];

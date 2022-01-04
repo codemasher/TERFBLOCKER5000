@@ -706,8 +706,8 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 		foreach([$name, $bio, $location] as $str){
 
 			$str = mb_strtolower(str_replace(
-				['.', ',', '"', '\'', '-', '/', '\\', '•'],
-				[' ', ' ',  '',   '', ' ', ' ',  ' ', ' '],
+				['.', ',', '"', '\'', '-', '/', '\\', '|', '•'],
+				[' ', ' ',  '',   '', ' ', ' ',  ' ',  '', ' '],
 				$str
 			));
 

@@ -14,8 +14,6 @@
  * @var \Psr\Log\LoggerInterface $logger
  */
 
-use Psr\Log\LogLevel;
-
 require_once __DIR__.'/../cron/common.php';
 
 $logger->info('creating dbstorage tables...');

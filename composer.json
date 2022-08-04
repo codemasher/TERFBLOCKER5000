@@ -12,13 +12,13 @@
 		"ext-mysqli": "*",
 		"ext-sodium": "*",
 		"psr/log": "^1.1 || ^2.0 || ^3.0",
-		"chillerlan/php-database": "dev-main#4007033b41119ab128917b13333e86174a64085f",
+		"chillerlan/php-database": "dev-main#b9027e2b06e5fe694069d0749ddbf5f75e729f44",
 		"chillerlan/php-oauth-providers": "^2.0"
 	},
 	"require-dev": {
 		"chillerlan/php-cache": "^4.1",
-		"chillerlan/php-dotenv": "^2.1",
-		"monolog/monolog": "^2.3",
+		"chillerlan/php-dotenv": "^2.1.2",
+		"monolog/monolog": "^2.8",
 		"phpunit/phpunit": "^9.5"
 	},
 	"autoload": {

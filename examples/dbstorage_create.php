@@ -69,7 +69,8 @@ $db->create
 	->field('updated', 'TIMESTAMP', null, 'ON UPDATE CURRENT_TIMESTAMP', null, null, 'CURRENT_TIMESTAMP')
 	->query();
 
-$db->raw(sprintf('ALTER TABLE `%s` ADD FULLTEXT(`description`);', $options->table_profiles));
+// full text search will slow down immensely at a certain table size for whatever reason
+#$db->raw(sprintf('ALTER TABLE `%s` ADD FULLTEXT(`description`);', $options->table_profiles));
 
 // block list
 #$db->drop->table($options->table_blocklist)->ifExists()->query();

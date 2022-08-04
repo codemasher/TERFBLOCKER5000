@@ -17,7 +17,7 @@
  */
 require_once __DIR__.'/common.php';
 
-$terfblocker->setTokenFromScreenName('TERFBLOCKER5000');
+$terfblocker->setTokenFromScreenName($options->cronUser);
 
 while(true){
 
@@ -29,7 +29,7 @@ while(true){
 	if($count === 0){
 		$logger->info('0 rows found, going to sleep');
 
-		sleep(60);
+		sleep($options->sleepTimer);
 		continue;
 	}
 

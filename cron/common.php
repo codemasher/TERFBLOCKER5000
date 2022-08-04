@@ -63,6 +63,8 @@ $options = new TERFBLOCKER5000Options([
 	'storageCryptoKey'    => $env->DB_CRYPTO_KEY,
 	'$storageCryptoNonce' => $env->DB_CRYPTO_NONCE,
 	'loglevel'            => $LOGLEVEL,
+	'cronUser'            => $env->CRON_SCREEN_NAME,
+	'sleepTimer'          => 90,
 ]);
 
 // a log handler for STDOUT (or STDERR if you prefer)

@@ -26,7 +26,7 @@ use function chillerlan\HTTP\Utils\get_json;
 use function array_column, array_diff, array_key_exists, array_merge, array_unique, array_values, count, date,
 	file_exists, file_get_contents, file_put_contents, implode, in_array, is_array, is_dir, is_file, is_numeric,
 	is_readable, is_string, is_writable, json_encode, json_decode, mb_strpos, mb_strtolower, preg_match,
-	preg_replace, realpath, round, rtrim, sleep, sprintf, str_replace, strtolower, strtotime, time, trim, usleep;
+	preg_replace, realpath, round, rtrim, sleep, sprintf, str_replace, strpos, strtolower, strtotime, time, trim, usleep;
 
 use const DIRECTORY_SEPARATOR, JSON_BIGINT_AS_STRING, JSON_PRETTY_PRINT, JSON_THROW_ON_ERROR, JSON_UNESCAPED_SLASHES;
 
@@ -170,6 +170,12 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 			elseif(is_string($item)){
 				$item  = mb_strtolower($item);
 				$any[] = $item;
+				// remove number sign to avoid mid-sentence hashtags
+				if(strpos($item, '#') > 1){
+					$item  = str_replace('#', '', $item);
+					$any[] = $item;
+				}
+				// remove spaces
 				$any[] = str_replace(' ', '', $item);
 			}
 

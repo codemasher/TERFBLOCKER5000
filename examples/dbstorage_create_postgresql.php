@@ -21,7 +21,7 @@ $logger->info('creating dbstorage tables...');
 $db->connect();
 
 // token table
-#$db->drop->table($options->table_token)->ifExists()->query();
+$db->drop->table($options->table_token)->ifExists()->query();
 
 $db->create
 	->table($options->table_token)
@@ -34,24 +34,24 @@ $db->create
 
 
 // to-scan table
-#$db->drop->table($options->table_scan_jobs)->ifExists()->query();
+$db->drop->table($options->table_scan_jobs)->ifExists()->query();
 
 $db->create
 	->table($options->table_scan_jobs)
 	->ifNotExists()
 	->primaryKey('scan_id')
-	->int('scan_id', 10, null, false, 'UNSIGNED AUTO_INCREMENT')
+	->field('scan_id', 'SERIAL', 10, null, null, false)
 	->bigint('id', 20)
 	->varchar('screen_name', 32, null, true)
-	->tinyint('finished', 1, 0, false, 'UNSIGNED')
+	->tinyint('finished', 1, 0, false)
 	->query();
 
-#$db->raw(sprintf('ALTER TABLE `%s` ADD UNIQUE(`id`);', $options->table_scan_jobs));
-$db->raw(sprintf('ALTER TABLE `%s` ADD UNIQUE(`screen_name`);', $options->table_scan_jobs));
+$db->raw(sprintf('CREATE UNIQUE INDEX screen_name_u ON %s(screen_name);', $options->table_scan_jobs));
 
 
 // profiles table
-#$db->drop->table($options->table_profiles)->ifExists()->query();
+$db->drop->table($options->table_profiles)->ifExists()->query();
+$db->raw('DROP FUNCTION profiles_update_updated');
 
 $db->create
 	->table($options->table_profiles)
@@ -62,18 +62,32 @@ $db->create
 	->text('name', null, true)
 	->text('description', null, true)
 	->text('location', null, true)
-	->int('followers_count', 10, null, false, 'UNSIGNED')
-	->int('friends_count', 10, null, false, 'UNSIGNED')
-	->int('created_at', 10, null, false, 'UNSIGNED')
-	->tinyint('verified', 1, 0, false, 'UNSIGNED')
-	->field('updated', 'TIMESTAMP', null, 'ON UPDATE CURRENT_TIMESTAMP', null, null, 'CURRENT_TIMESTAMP')
+	->int('followers_count', 10, 0, false)
+	->int('friends_count', 10, 0, false)
+	->int('created_at', 10, 0, false)
+	->tinyint('verified', 1, 0, false)
+	->field('updated', 'TIMESTAMP', null, null, null, null, 'CURRENT_TIMESTAMP')
 	->query();
+
+$db->raw('CREATE FUNCTION profiles_update_updated()
+RETURNS TRIGGER LANGUAGE plpgsql AS
+$$BEGIN
+    NEW.updated = now();
+    RETURN NEW;
+END;$$;');
+
+$db->raw('CREATE TRIGGER profiles_updated
+BEFORE UPDATE
+ON public.'.$options->table_profiles.'
+FOR EACH ROW
+EXECUTE FUNCTION public.profiles_update_updated();');
 
 // full text search will slow down immensely at a certain table size for whatever reason
 #$db->raw(sprintf('ALTER TABLE `%s` ADD FULLTEXT(`description`);', $options->table_profiles));
 
+
 // block list
-#$db->drop->table($options->table_blocklist)->ifExists()->query();
+$db->drop->table($options->table_blocklist)->ifExists()->query();
 
 $db->create
 	->table($options->table_blocklist)
@@ -84,7 +98,7 @@ $db->create
 
 
 // always block list
-#$db->drop->table($options->table_block_always)->ifExists()->query();
+$db->drop->table($options->table_block_always)->ifExists()->query();
 
 $db->create
 	->table($options->table_block_always)
@@ -95,7 +109,7 @@ $db->create
 
 
 // never block list
-#$db->drop->table($options->table_block_never)->ifExists()->query();
+$db->drop->table($options->table_block_never)->ifExists()->query();
 
 $db->create
 	->table($options->table_block_never)
@@ -106,17 +120,20 @@ $db->create
 
 
 // error log
-#$db->drop->table($options->table_log)->ifExists()->query();
+$db->drop->table($options->table_log)->ifExists()->query();
+$db->raw('DROP TYPE loglevels;');
+
+$db->raw('CREATE TYPE loglevels AS ENUM (\''.implode("','", ['DEBUG', 'INFO', 'NOTICE', 'WARNING', 'ERROR', 'CRITICAL', 'ALERT', 'EMERGENCY']).'\')');
 
 $db->create
 	->table($options->table_log)
 	->ifNotExists()
 	->primaryKey('id')
-	->bigint('id', 20, null, false, 'UNSIGNED AUTO_INCREMENT')
+	->field('id', 'BIGSERIAL', 20, null, null, false)
 	->tinytext('channel')
-	->enum('level_name', ['DEBUG', 'INFO', 'NOTICE', 'WARNING', 'ERROR', 'CRITICAL', 'ALERT', 'EMERGENCY'])
+	->field('level_name', 'loglevels')
 	->text('message')
 	->text('context', null, true)
 	->text('extra', null, true)
-	->int('datetime', 10, null, false, 'UNSIGNED')
+	->int('datetime', 10, null, false)
 	->query();

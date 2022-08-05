@@ -6,8 +6,9 @@
  * @license      MIT
  */
 
+use chillerlan\OAuth\Core\AccessToken;
 use chillerlan\Database\{Database, MonologHandler};
-use chillerlan\Database\Drivers\MySQLiDrv;
+use chillerlan\Database\Drivers\PostgreSQL;
 use chillerlan\DotEnv\DotEnv;
 use chillerlan\HTTP\Psr18\CurlClient;
 use chillerlan\SimpleCache\MemoryCache;
@@ -42,9 +43,10 @@ $env = (new DotEnv($CFGDIR, $ENVFILE, false))->load();
 
 $options = new TERFBLOCKER5000Options([
 	// DatabaseOptionsTrait
-	'driver'              => MySQLiDrv::class,
+#	'driver'              => MySQLiDrv::class,
+	'driver'              => PostgreSQL::class,
 	'host'                => $env->DB_HOST ?? 'localhost',
-	'port'                => (int)($env->DB_PORT ?? 3306),
+	'port'                => !empty($env->DB_PORT) ? (int)($env->DB_PORT) : null,
 	'socket'              => $env->DB_SOCKET ?? '',
 	'database'            => $env->DB_DATABASE,
 	'username'            => $env->DB_USERNAME,
@@ -74,8 +76,11 @@ $logHandler  = (new StreamHandler('php://stdout', $options->loglevel))
 $logger      = new Logger('log', [$logHandler]); // PSR-3
 // a db instance with a clone (!) of the logger instance - we don't want the DB logger here
 $db          = new Database($options, new MemoryCache, clone $logger);
-// add the DB logger
-$logger->pushHandler(new MonologHandler($db, $options->table_log, LogLevel::ERROR));
+// add the DB logger (uncomment only when everything is prepared, aka db tables are created)
+#$logger->pushHandler(new MonologHandler($db, $options->table_log, LogLevel::ERROR));
 // invoke the rest
 $http        = new CurlClient($options, null, $logger); // PSR-18
 $terfblocker = new TERFBLOCKER5000($http, $db, $options, $logger);
+// import user token if necessary
+#$token = (new AccessToken)->fromJSON(file_get_contents($CFGDIR.'/Twitter.token.json'));
+#$terfblocker->importUserToken($token);

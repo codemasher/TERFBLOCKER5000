@@ -46,7 +46,7 @@ $db->create
 	->tinyint('finished', 1, 0, false)
 	->query();
 
-$db->raw(sprintf('CREATE UNIQUE INDEX screen_name_u ON %s(screen_name);', $options->table_scan_jobs));
+$db->raw(sprintf('CREATE UNIQUE INDEX id_u ON %s(id);', $options->table_scan_jobs));
 
 
 // profiles table

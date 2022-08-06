@@ -1254,7 +1254,7 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 			$this->logger->info(sprintf('%d accounts found for "%s"', $result->count(), $term));
 
 			$this->db->insert
-				->into($this->options->table_blocklist, 'IGNORE')
+				->into($this->options->table_blocklist, 'IGNORE', 'id')
 				->values($result)
 				->multi();
 		}

@@ -23,8 +23,8 @@ use Psr\Log\{LoggerAwareInterface, LoggerAwareTrait, LoggerInterface, NullLogger
 use Closure, InvalidArgumentException, RuntimeException, Throwable;
 
 use function chillerlan\HTTP\Utils\get_json;
-use function array_column, array_diff, array_key_exists, array_merge, array_unique, array_values, count, date,
-	file_exists, file_get_contents, file_put_contents, implode, in_array, is_array, is_dir, is_file, is_numeric,
+use function array_column, array_diff, array_map, array_key_exists, array_keys, array_merge, array_unique, array_values,
+	count, date, file_exists, file_get_contents, file_put_contents, implode, in_array, is_array, is_dir, is_file, is_numeric,
 	is_readable, is_string, is_writable, json_encode, json_decode, mb_strpos, mb_strtolower, preg_match,
 	preg_replace, realpath, round, rtrim, sleep, sprintf, str_replace, strpos, strtolower, strtotime, time, trim, usleep;
 
@@ -943,18 +943,22 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 	/**
 	 * feches the block list and runs the blocker for the currently authenticated user
 	 */
-	public function block():TERFBLOCKER5000{
+	public function block(int $blocklist = null):TERFBLOCKER5000{
 
-		$result = $this->db->select
+		$q = $this->db->select
 			->cols(['profiles.id', 'profiles.screen_name'])
 			->from([
 				'profiles'  => $this->options->table_profiles,
 				'blocklist' => $this->options->table_blocklist,
 			])
 			->where('profiles.id', 'blocklist.id', '=', false)
-			->where('profiles.screen_name', ['[NOT_FOUND]', '[SUSPENDED]'], 'NOT IN')
-			->query()
-		;
+			->where('profiles.screen_name', ['[NOT_FOUND]', '[SUSPENDED]'], 'NOT IN');
+
+		if($blocklist !== null){
+			$q->where('blocklist.blocktype', $blocklist);
+		}
+
+		$result = $q->query();
 
 		if($result->count() > 0){
 			$this->performBlock($result->toArray());

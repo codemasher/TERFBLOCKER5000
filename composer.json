@@ -10,15 +10,16 @@
 		"ext-json": "*",
 		"ext-mbstring": "*",
 		"ext-mysqli": "*",
+		"ext-pgsql": "*",
 		"ext-sodium": "*",
 		"psr/log": "^1.1 || ^2.0 || ^3.0",
+		"chillerlan/php-cache": "^4.1",
 		"chillerlan/php-database": "dev-main#b9027e2b06e5fe694069d0749ddbf5f75e729f44",
-		"chillerlan/php-oauth-providers": "^2.0"
+		"chillerlan/php-dotenv": "^2.1.2",
+		"chillerlan/php-oauth-providers": "^2.0",
+		"monolog/monolog": "^2.8"
 	},
 	"require-dev": {
-		"chillerlan/php-cache": "^4.1",
-		"chillerlan/php-dotenv": "^2.1.2",
-		"monolog/monolog": "^2.8",
 		"phpunit/phpunit": "^9.5"
 	},
 	"autoload": {

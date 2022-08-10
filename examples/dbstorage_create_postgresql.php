@@ -94,6 +94,7 @@ $db->create
 	->ifNotExists()
 	->primaryKey('id')
 	->bigint('id', 20)
+	->int('blocktype', 10, -1, false)
 	->query();
 
 

@@ -192,7 +192,7 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 	 *
 	 * caution: highly inefficient (but the only way with the v1 API)
 	 */
-	public function fromMentions(string $statusURL, string $blocktype = null, bool $enforceLimit = null):TERFBLOCKER5000{
+	public function fromMentions(string $statusURL, string $blocktype = null):TERFBLOCKER5000{
 		[$screen_name, $id] = $this::parseTwitterURL($statusURL);
 
 		if(empty($screen_name)){
@@ -207,7 +207,7 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 			'result_type'      => 'mixed',
 		];
 
-		$this->getUsersFromV1SearchTweets($params, $id, $blocktype, $enforceLimit);
+		$this->getUsersFromV1SearchTweets($params, $id, $blocktype);
 
 		return $this;
 	}
@@ -217,7 +217,7 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 	 *
 	 * @see https://developer.twitter.com/en/docs/twitter-api/v1/tweets/search/guides/standard-operators
 	 */
-	public function fromSearch(string $q, string $blocktype = null, bool $enforceLimit = null):TERFBLOCKER5000{
+	public function fromSearch(string $q, string $blocktype = null):TERFBLOCKER5000{
 
 		$params = [
 			'q'                => $q,
@@ -226,7 +226,7 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 			'result_type'      => 'mixed',
 		];
 
-		$this->getUsersFromV1SearchTweets($params, null, $blocktype, $enforceLimit);
+		$this->getUsersFromV1SearchTweets($params, null, $blocktype);
 
 		return $this;
 	}
@@ -238,8 +238,8 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 	 *
 	 * @see https://developer.twitter.com/en/docs/twitter-api/v1/accounts-and-users/follow-search-get-users/api-reference/get-followers-ids
 	 */
-	public function fromFollowers(string $screen_name, bool $enforceLimit = null):TERFBLOCKER5000{
-		$this->getIDs('followersIds', ['screen_name' => $screen_name], $enforceLimit, true);
+	public function fromFollowers(string $screen_name):TERFBLOCKER5000{
+		$this->getIDs('followersIds', ['screen_name' => $screen_name], true);
 
 		return $this;
 	}
@@ -251,8 +251,8 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 	 *
 	 * @see https://developer.twitter.com/en/docs/twitter-api/v1/accounts-and-users/follow-search-get-users/api-reference/get-friends-ids
 	 */
-	public function fromFollowing(string $screen_name, bool $enforceLimit = null):TERFBLOCKER5000{
-		$this->getIDs('friendsIds', ['screen_name' => $screen_name], $enforceLimit, true);
+	public function fromFollowing(string $screen_name):TERFBLOCKER5000{
+		$this->getIDs('friendsIds', ['screen_name' => $screen_name], true);
 
 		return $this;
 	}
@@ -260,11 +260,11 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 	/**
 	 * Similar to fromFollowers() and fromFollowing() with the difference that the input parameter is a list of screen_names.
 	 */
-	public function fromFollowersAndFollowing(array $screen_names, bool $enforceLimit = null):TERFBLOCKER5000{
+	public function fromFollowersAndFollowing(array $screen_names):TERFBLOCKER5000{
 
 		foreach($screen_names as $screen_name){
-			$this->getIDs('followersIds', ['screen_name' => $screen_name], $enforceLimit, true);
-			$this->getIDs('friendsIds', ['screen_name' => $screen_name], $enforceLimit, true);
+			$this->getIDs('followersIds', ['screen_name' => $screen_name], true);
+			$this->getIDs('friendsIds', ['screen_name' => $screen_name], true);
 		}
 
 		return $this;
@@ -284,15 +284,7 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 			throw new InvalidArgumentException('no snowflake id given');
 		}
 
-		$statusResponse = $this->twitter->statusesShowId($id);
-		$enforceLimit   = false;
-
-		if($statusResponse->getStatusCode() === 200){
-			$status       = get_json($statusResponse);
-			$enforceLimit = $status->retweet_count > 50000;
-		}
-
-		$this->getIDs('statusesRetweetersIds', ['id' => $id, 'count' => 100], $enforceLimit, true);
+		$this->getIDs('statusesRetweetersIds', ['id' => $id, 'count' => 100], true);
 
 		return $this;
 	}
@@ -464,8 +456,8 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 	 *
 	 * @see https://developer.twitter.com/en/docs/twitter-api/v1/accounts-and-users/mute-block-report-users/api-reference/get-blocks-ids
 	 */
-	public function fromBlocklist(bool $enforceLimit = null):TERFBLOCKER5000{
-		$this->getIDs('blocksIds', [], $enforceLimit, true);
+	public function fromBlocklist():TERFBLOCKER5000{
+		$this->getIDs('blocksIds', [], true);
 
 		return $this;
 	}
@@ -561,7 +553,7 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 	/**
 	 * @see https://developer.twitter.com/en/docs/twitter-api/v1/tweets/search/api-reference/get-search-tweets
 	 */
-	protected function getUsersFromV1SearchTweets(array $params, string $statusID = null, $blocktype = null, bool $enforceLimit = null):void{
+	protected function getUsersFromV1SearchTweets(array $params, string $statusID = null, $blocktype = null):void{
 
 		while(true){
 
@@ -620,7 +612,7 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 
 			$params = Query::parse($json->search_metadata->next_results);
 
-			if($enforceLimit){
+			if($this->options->enforceRateLimit){
 				// sleep for 2.1 seconds (API limit: 450requests/15min - too lazy to implement a token bucket...)
 				usleep(2100000);
 			}
@@ -745,7 +737,7 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 	/**
 	 * fetches a list of IDs from the given endpoint
 	 */
-	protected function getIDs(string $endpointMethod, array $params, bool $enforceLimit = null, bool $insert = null):array{
+	protected function getIDs(string $endpointMethod, array $params, bool $insert = null):array{
 
 		$endpoints = [
 			'blocksIds'             => 61, // user/app 15/900s
@@ -803,7 +795,7 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 
 			$params['cursor'] = $json->next_cursor_str;
 
-			if($enforceLimit){
+			if($this->options->enforceRateLimit){
 				$this->logger->info(sprintf(
 					'enforcing limit for "%s": going to sleep for %ss',
 					$endpointMethod,
@@ -1091,7 +1083,7 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 				foreach(['followersIds', 'friendsIds'] as $endpoint){
 					$this->logger->info(sprintf('scanning: %s (%s)', $row->screen_name, $endpoint));
 
-					$this->getIDs($endpoint, ['user_id' => $row->id, 'screen_name' => $row->screen_name], true, true);
+					$this->getIDs($endpoint, ['user_id' => $row->id, 'screen_name' => $row->screen_name], true);
 				}
 
 				sleep(60);

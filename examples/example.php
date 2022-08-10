@@ -27,18 +27,18 @@ $terfblocker
 	->setWordlist($wordlist)
 	// fetch from replies to a given tweet
 	// the 2nd parameter toggles the API request limit enforcement
-	->fromMentions('https://twitter.com/Nigella_Lawson/status/1441121776780464132', true)
+	->fromMentions('https://twitter.com/Nigella_Lawson/status/1441121776780464132', 'always')
 	// or just the @-mentions of a user
-	->fromMentions('https://twitter.com/Lenniesaurus', true)
+	->fromMentions('https://twitter.com/Lenniesaurus', 'always')
 	// from an advanced search
 	// @see https://developer.twitter.com/en/docs/twitter-api/v1/tweets/search/guides/standard-operators
-	->fromSearch('#IStandWithJKRowling', true)
+	->fromSearch('#IStandWithJKRowling', 'always')
 	// from the followers of the given account
-	->fromFollowers('https://twitter.com/HJoyceGender', true)
+	->fromFollowers('https://twitter.com/HJoyceGender')
 	// from the accounts the given account follows
-	->fromFollowing('https://twitter.com/HJoyceGender', true)
+	->fromFollowing('https://twitter.com/HJoyceGender')
 	// from followers AND following from a list of screen names ()
-	->fromFollowersAndFollowing(['ALLIANCELGB', 'Transgendertrd', 'fairplaywomen'], true)
+	->fromFollowersAndFollowing(['ALLIANCELGB', 'Transgendertrd', 'fairplaywomen'])
 	// adds each of the given screen_names to the given block list (always, block, never)
 	->fromScreenNames(['ALLIANCELGB', 'Transgendertrd', 'fairplaywomen'], 'always')
 	// fetches the retweeters of the given tweet - note that the results of this endpoint

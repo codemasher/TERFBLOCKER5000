@@ -157,31 +157,42 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 
 	/**
 	 * imports/parses a list of terms to search for/match against
+	 *
+	 * @throws \Exception
 	 */
 	public function setWordlist(array $wordlist):TERFBLOCKER5000{
 		$this->all = [];
-		$any       = [];
 
-		foreach($wordlist as $item){
+		foreach($wordlist as $blocktype => $list){
 
-			if(is_array($item)){
-				$this->all[] = $item;
+			if(!is_array($list)){
+				throw new Exception('wordlist is not an array');
 			}
-			elseif(is_string($item)){
-				$item  = mb_strtolower($item);
-				$any[] = $item;
-				// remove number sign to avoid mid-sentence hashtags
-				if(strpos($item, '#') > 1){
-					$item  = str_replace('#', '', $item);
-					$any[] = $item;
+
+			$any = [];
+			$this->all[$blocktype] = [];
+
+			foreach($list as $item){
+
+				if(is_array($item)){
+					$this->all[$blocktype][] = array_map('mb_strtolower', $item);
 				}
-				// remove spaces
-				$any[] = str_replace(' ', '', $item);
+				elseif(is_string($item)){
+					$item  = mb_strtolower($item);
+					$any[] = $item;
+					// remove number sign to avoid mid-sentence hashtags
+					if(strpos($item, '#') > 1){
+						$item  = str_replace('#', '', $item);
+						$any[] = $item;
+					}
+					// remove spaces
+					$any[] = str_replace(' ', '', $item);
+				}
+
 			}
 
+			$this->any[$blocktype] = array_unique($any);
 		}
-
-		$this->any = array_unique($any);
 
 		return $this;
 	}
@@ -625,12 +636,17 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 	 * @see https://developer.twitter.com/en/docs/twitter-api/data-dictionary/object-model/user
 	 */
 	protected function prepareUserValues(object $user, bool $match = true):array{
-		$name        = preg_replace('/\s\s+/', ' ', $user->name ?? '');
-		$description = preg_replace('/\s\s+/', ' ', $user->description ?? '');
-		$location    = preg_replace('/\s\s+/', ' ', $user->location ?? '');
 
-		if($match && $this->match($name, $description, $location)){
-			$this->blockIDs[$user->id] = ['id' => $user->id];
+		foreach(['name', 'description', 'location'] as $var){
+			${$var} = preg_replace('/\s+/', ' ', $user->{$var} ?? '');
+		}
+
+		if($match){
+			foreach(array_keys($this->any) as $blocktype){
+				if($this->match(implode(' ', [$name, $description, $location]), $blocktype)){
+					$this->blockIDs[$user->id] = ['id' => $user->id, 'blocktype' => $blocktype];
+				}
+			}
 		}
 
 		return [
@@ -680,7 +696,7 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 		}
 
 		$this->db->insert
-			->into($this->options->table_blocklist, 'IGNORE', 'id')
+			->into($this->options->table_blocklist, 'REPLACE', 'id')
 			->values($blockIDs)
 			->multi();
 
@@ -693,33 +709,63 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 	}
 
 	/**
-	 * simple and cheap matching against a list of terms - no regex cannons fired (WIP)
+	 * prepares the input string for matching
 	 */
-	protected function match(string $name, string $bio, string $location):bool{
+	protected function cleanString(string $str):string{
+		$str = str_replace(['.', ',',  '-', '/', '\\', '•', "\n"], ' ', $str);
 
-		if(empty($this->any) && empty($this->all)){
-			throw new InvalidArgumentException('no terms to match given');
+		return str_replace(['"', '\'', '|',], '', $str);
+	}
+
+	/**
+	 *
+	 */
+	protected function matchAny(string $string, int $blocktype = null):bool{
+		$wordlist = $this->any;
+
+		if($blocktype !== null){
+
+			if(!isset($this->any[$blocktype])){
+				var_dump($this->any);
+				throw new InvalidArgumentException('block type does not exist in word list');
+			}
+
+			$wordlist = [$this->any[$blocktype]];
 		}
 
-		foreach([$name, $bio, $location] as $str){
-
-			$str = mb_strtolower(str_replace(
-				['.', ',', '"', '\'', '-', '/', '\\', '|', '•'],
-				[' ', ' ',  '',   '', ' ', ' ',  ' ',  '', ' '],
-				$str
-			));
-
-			foreach($this->any as $term){
-				if(mb_strpos($str, $term) !== false){
+		foreach($wordlist as $terms){
+			foreach($terms as $term){
+				if(mb_strpos($string, $term) !== false){
 					return true;
 				}
 			}
+		}
 
-			foreach($this->all as $arr){
+		return false;
+	}
+
+	/**
+	 *
+	 */
+	protected function matchAll(string $string, int $blocktype = null):bool{
+		$wordlist = $this->all;
+
+		if($blocktype !== null){
+
+			if(!isset($this->all[$blocktype])){
+				var_dump($this->all);
+				throw new InvalidArgumentException('block type does not exist in word list');
+			}
+
+			$wordlist = [$this->all[$blocktype]];
+		}
+
+		foreach($wordlist as $terms){
+			foreach($terms as $arr){
 				$check = [];
 
 				foreach($arr as $term){
-					if(mb_strpos($str, $term) !== false){
+					if(mb_strpos($string, $term) !== false){
 						$check[$term] = true;
 					}
 				}
@@ -728,7 +774,37 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 					return true;
 				}
 			}
+		}
 
+		return false;
+	}
+
+	/**
+	 * simple and cheap matching against a list of terms - no regex cannons fired, yet highly inefficient (WIP)
+	 */
+	protected function match(string $string, int $blocktype = null):bool{
+
+		if(empty($this->any) && empty($this->all)){
+			throw new InvalidArgumentException('no terms to match given');
+		}
+
+		$string = mb_strtolower($string);
+
+		// match against the original first
+		if($this->matchAny($string, $blocktype)){
+			return true;
+		}
+
+		// nothing found? fine, clean the string
+		$cleaned = $this->cleanString($string);
+
+		if($this->matchAny($cleaned, $blocktype)){
+			return true;
+		}
+
+		// still nothing? match against the "all" list
+		if($this->matchAll($cleaned, $blocktype)){
+			return true;
 		}
 
 		return false;

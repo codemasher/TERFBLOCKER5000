@@ -56,6 +56,8 @@ class TERFBLOCKER5000Options extends OAuthOptions{
 	protected string $cronUser           = '';
 	protected int    $sleepTimer         = 60;
 	protected bool   $enforceRateLimit   = true;
+	protected int    $blockRetries       = 1;
+
 	/**
 	 * @throws \chillerlan\OAuth\OAuthException
 	 */

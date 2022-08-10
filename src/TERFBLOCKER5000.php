@@ -945,7 +945,7 @@ class TERFBLOCKER5000 implements LoggerAwareInterface{
 			}
 			else{
 
-				if($user['retry'] < 3){
+				if($user['retry'] < $this->options->blockRetries){
 					$user['retry']++;
 					$blocklist[] = $user;
 
